@@ -444,8 +444,6 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
 						
 						if counter == 0:
-							print(read.name)
-							print(demulti_type)
 							umi_l = len(read.name.split("rbc:")[1])
 						assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
 
@@ -680,7 +678,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 						help='sequencing adapter to trim [DEFAULT Illumina AGATCGGAAGAGCGGTTCAG]')
 	optional.add_argument('-o',"--outputprefix", type=str, default="demux", nargs='?',
 						help='prefix for output sequences [DEFAULT demux]')
-	optional.add_argument('-sb',"--sbatchcompression", type=bool, default=False,
+	optional.add_argument('-sb',"--sbatchcompression", action='store_true', default=False,
 						help='whether to compress output fastq using SLURM sbatch')
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
