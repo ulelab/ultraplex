@@ -15,7 +15,8 @@ import glob
 import time
 from abc import ABC, abstractmethod
 from dnaio import Sequence
-#hello
+import argparse
+
 
 def make_5p_bc_dict(barcodes, min_score):
 	"""
@@ -302,7 +303,7 @@ def make_dict_of_3p_bc_dicts(linked_bcs, min_score):
 				lengths[len(bc)] = 1
 
 	# check that barcodes are all the same length, or there are none
-	assert len(lengths) <= 1
+	assert len(lengths) <= 1, "Your barcodes are different lengths, this is not allowed."
 	return d, three_p_length
 
 class WorkerProcess(Process): #/# have to have "Process" here to enable worker.start()
@@ -392,7 +393,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 				if len(read.sequence) > self._min_length:
 					#/# demultiplex at the 5' end ###
 					read.name = read.name.replace(" ", "").replace("/", "").replace("\\", "") # remove bad characters
-					five_p_bcs_length = 9
+
 					read, five_p_bc = five_p_demulti(read, five_p_bcs, 
 						self._five_p_barcodes_pos,
 						self._five_p_umi_poses,
@@ -599,7 +600,7 @@ def clean_files(save_name):
 		os.remove(file)
 
 
-def process_bcs(csv):
+def process_bcs(csv, mismatch_5p, mismatch_3p):
 
 	five_p_bcs = []
 	three_p_bcs = []
@@ -614,6 +615,7 @@ def process_bcs(csv):
 			if len(comma_split) == 1:
 				# then there's no 3' barcode
 				five_p_bcs.append(comma_split[0])
+				fivelength=len(comma_split[0].replace("N",""))
 			elif len(comma_split) == 2:
 				# then we have 3 prime bcds
 				five_p_bcs.append(comma_split[0])
@@ -623,21 +625,55 @@ def process_bcs(csv):
 
 				for bc in three_ps:
 					three_p_bcs.append(bc)
+					threelength=len(bc.replace("N",""))
 
 	# remove duplicates
 	five_p_bcs = list(dict.fromkeys(five_p_bcs))
 	three_p_bcs = list(dict.fromkeys(three_p_bcs))
 
-	return five_p_bcs, three_p_bcs, linked
+	match_5p = fivelength - mismatch_5p
+	match_3p = threelength - mismatch_3p
 
-def main(threads, file_name, adapter, save_name, 
-barcodes_csv, min_score_5_p, min_score_3_p, 
-three_p_trim_q, buffer_size = int(4*1024**2)): # 4 MB
+	return five_p_bcs, three_p_bcs, linked, match_5p, match_3p
+
+def main(buffer_size = int(4*1024**2)): # 4 MB
 	start = time.time()
-	os.system("ml pigz")
+
+	## PARSE COMMAND LINE ARGUMENTS ##
+
+	parser = argparse.ArgumentParser(description='Ultra-fast demultiplexing of fastq files.')
+	optional = parser._action_groups.pop()
+	required = parser.add_argument_group('required arguments')
+	required.add_argument('-i',"--inputfastq", type=str, required=True,
+						help='fastq file to be demultiplexed')
+	required.add_argument('-b',"--barcodes", type=str, required=True,
+						help='barcodes for demultiplexing in csv format')
+	optional.add_argument('-m5',"--fiveprimemismatches", type=int, default=1, nargs='?',
+						help='number of mismatches allowed for 5prime barcode [DEFAULT 1]')
+	optional.add_argument('-m3',"--threeprimemismatches", type=int, default=0, nargs='?',
+						help='number of mismatches allowed for 3prime barcode [DEFAULT 0]')
+	optional.add_argument('-q',"--phredquality", type=int, default=30, nargs='?',
+						help='phred quality score for 3prime end trimming')
+	optional.add_argument('-t',"--threads", type=int, default=8, nargs='?',
+						help='threads [DEFAULT 8]')
+	optional.add_argument('-a',"--adapter", type=str, default="AGATCGGAAGAGCGGTTCAG", nargs='?',
+						help='sequencing adapter to trim [DEFAULT Illumina AGATCGGAAGAGCGGTTCAG]')
+	optional.add_argument('-o',"--outputprefix", type=str, default="demux", nargs='?',
+						help='prefix for output sequences [DEFAULT demux]')
+	parser._action_groups.append(optional)
+	args = parser.parse_args()
+	print(args)
+	file_name = args.inputfastq
+	barcodes_csv = args.barcodes
+	mismatch_5p = args.fiveprimemismatches
+	mismatch_3p = args.threeprimemismatches
+	three_p_trim_q = args.phredquality
+	threads = args.threads
+	adapter = args.adapter
+	save_name = args.outputprefix
 
 	# process the barcodes csv 
-	five_p_bcs, three_p_bcs, linked_bcs = process_bcs(barcodes_csv)
+	five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p, mismatch_3p)
 	
 	# remove files from previous runs
 	clean_files(save_name)
@@ -665,23 +701,6 @@ three_p_trim_q, buffer_size = int(4*1024**2)): # 4 MB
 	concatenate_files(save_name)
 	print("Demultiplexing complete! " + str(total_demultiplexed.get()[0])+' reads written in ' +str((time.time()-start)//1) + ' seconds')
 
-adapter = "AGATCGGAAGAGCGGTTCAG"
-save_name = "test_output"
-threads = 8
-file_name = "demux_disome17122019_NNNNAGGCANNN.fastq.gz"
-#file_directory = "/working/Oscar/oscar_charlotte/"
-#file_name = "GRI1109A2-A35_S7_L002_R1_001.fastq.gz"
-#file_name = "fastq_example (copy).fastq.gz"
-# five_p_bcs_input = ["NANN", "NCNN", "NGNN", "NTNN"]
-
-three_p_bcs_input = ["NA", "NC", "NG", "NT"]
-min_score_input_5p = 4
-min_score_input_3p = 3
-barcodes_csv_input = "barcodes.csv"
 
 if __name__ == "__main__":
-	main(threads = threads, file_name = file_name, adapter = adapter, save_name = save_name,
-		barcodes_csv = barcodes_csv_input,
-		min_score_5_p = min_score_input_5p,
-		min_score_3_p = min_score_input_3p,
-		three_p_trim_q = 30)
+	main()
