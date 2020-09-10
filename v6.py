@@ -540,7 +540,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 
 	return workers, all_conn_r, all_conn_w
 
-def concatenate_files(save_name, compression_threads = 32):
+def concatenate_files(save_name, sbatch_compression,
+	compression_threads = 4):
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
@@ -570,7 +571,10 @@ def concatenate_files(save_name, compression_threads = 32):
 
 		print("Compressing with pigz...")
 		c_thread_n = '-p' + str(compression_threads)
-		os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+		if sbatch_compression: 
+			os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+		else:
+			os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
 		for name in filenames:
 			os.remove(name)
@@ -633,10 +637,21 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 
 	match_5p = fivelength - mismatch_5p
 	match_3p = threelength - mismatch_3p
-
 	return five_p_bcs, three_p_bcs, linked, match_5p, match_3p
 
+def print_header():
+	print("")
+	print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+	print("@@@@@   @@@@   .@@   @@@@@@@          @@         @@@@@@    (@@@@@        @@@    @@@@@@@         @@    @@@    @")
+	print("@@@@   @@@@    @@   ,@@@@@@@@@    @@@@@    @@@   @@@@   (   @@@@   @@@   @@    @@@@@@@   @@@@@@@@@@   #   @@@@")
+	print("@@@   &@@@    @@    @@@@@@@@@%   @@@@@         @@@@(   @    @@@         @@    @@@@@@@         @@@@@     @@@@@@")
+	print("@@    @@@    @@    @@@@@@@@@@   @@@@@    @@    @@@          @@   .@@@@@@@*   @@@@@@@    @@@@@@@@.   @    @@@@@")
+	print("@@@       @@@@.        @@@@@   @@@@@&   @@@.   &   &@@@@    @    @@@@@@@@         @          @    @@@@    @@@@")
+	print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+	print("")
+    
 def main(buffer_size = int(4*1024**2)): # 4 MB
+
 	start = time.time()
 
 	## PARSE COMMAND LINE ARGUMENTS ##
@@ -698,7 +713,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	reader_process.daemon = True
 	reader_process.run()
 
-	concatenate_files(save_name)
+	concatenate_files(save_name, sbatch_compression)
 	print("Demultiplexing complete! " + str(total_demultiplexed.get()[0])+' reads written in ' +str((time.time()-start)//1) + ' seconds')
 
 
