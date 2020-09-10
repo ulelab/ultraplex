@@ -680,6 +680,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 						help='sequencing adapter to trim [DEFAULT Illumina AGATCGGAAGAGCGGTTCAG]')
 	optional.add_argument('-o',"--outputprefix", type=str, default="demux", nargs='?',
 						help='prefix for output sequences [DEFAULT demux]')
+	optional.add_argument('-sb',"--sbatchcompression", type=bool, default=False,
+						help='whether to compress output fastq using SLURM sbatch')
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
 	print(args)
@@ -691,6 +693,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	threads = args.threads
 	adapter = args.adapter
 	save_name = args.outputprefix
+	sbatch_compression = args.sbatchcompression
 
 	# process the barcodes csv 
 	five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p, mismatch_3p)
