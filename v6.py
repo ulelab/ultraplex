@@ -654,7 +654,7 @@ def print_header():
 	print("")
     
 def main(buffer_size = int(4*1024**2)): # 4 MB
-
+	print_header()
 	start = time.time()
 
 	## PARSE COMMAND LINE ARGUMENTS ##
