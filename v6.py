@@ -444,6 +444,8 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
 						
 						if counter == 0:
+							print(read.name)
+							print(demulti_type)
 							umi_l = len(read.name.split("rbc:")[1])
 						assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
 
@@ -482,6 +484,9 @@ def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
 
 		# to read header add umi and 5' barcode info
 		read.name = (read.name.replace(" ", "")+"rbc:" + this_five_p_umi)
+	else:
+		read.name = read.name + 'rbc:'
+	
 
 
 	return read, winner
