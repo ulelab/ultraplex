@@ -28,7 +28,7 @@ def make_5p_bc_dict(barcodes, min_score):
 
 	# check all the barcodes are the same length (ignoring UMIs)
 	for bc in barcodes:
-		assert len(bc.replace("N","")) == seq_length
+		assert len(bc.replace("N","")) == seq_length, "Your experimental barcodes are different lengths."
 
 	seqs = make_all_seqs(seq_length)
 
