@@ -539,7 +539,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 
 	return workers, all_conn_r, all_conn_w
 
-def concatenate_files(save_name, compression_threads = 32):
+def concatenate_files(save_name, sbatch_compression,
+	compression_threads = 4):
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
@@ -569,7 +570,10 @@ def concatenate_files(save_name, compression_threads = 32):
 
 		print("Compressing with pigz...")
 		c_thread_n = '-p' + str(compression_threads)
-		os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+		if sbatch_compression: 
+			os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+		else:
+			os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
 		for name in filenames:
 			os.remove(name)
@@ -630,11 +634,25 @@ def process_bcs(csv):
 
 	return five_p_bcs, three_p_bcs, linked
 
+def print_header():
+	print("")
+	print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+	print("@@@@@   @@@@   .@@   @@@@@@@          @@         @@@@@@    (@@@@@        @@@    @@@@@@@         @@    @@@    @")
+	print("@@@@   @@@@    @@   ,@@@@@@@@@    @@@@@    @@@   @@@@   (   @@@@   @@@   @@    @@@@@@@   @@@@@@@@@@   #   @@@@")
+	print("@@@   &@@@    @@    @@@@@@@@@%   @@@@@         @@@@(   @    @@@         @@    @@@@@@@         @@@@@     @@@@@@")
+	print("@@    @@@    @@    @@@@@@@@@@   @@@@@    @@    @@@          @@   .@@@@@@@*   @@@@@@@    @@@@@@@@.   @    @@@@@")
+	print("@@@       @@@@.        @@@@@   @@@@@&   @@@.   &   &@@@@    @    @@@@@@@@         @          @    @@@@    @@@@")
+	print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+	print("")
+
+
 def main(threads, file_name, adapter, save_name, 
 barcodes_csv, min_score_5_p, min_score_3_p, 
-three_p_trim_q, buffer_size = int(4*1024**2)): # 4 MB
+three_p_trim_q, sbatch_compression, buffer_size = int(4*1024**2)): # 4 MB
+	
+	print_header()
+
 	start = time.time()
-	os.system("ml pigz")
 
 	# process the barcodes csv 
 	five_p_bcs, three_p_bcs, linked_bcs = process_bcs(barcodes_csv)
@@ -662,7 +680,7 @@ three_p_trim_q, buffer_size = int(4*1024**2)): # 4 MB
 	reader_process.daemon = True
 	reader_process.run()
 
-	concatenate_files(save_name)
+	concatenate_files(save_name, sbatch_compression)
 	print("Demultiplexing complete! " + str(total_demultiplexed.get()[0])+' reads written in ' +str((time.time()-start)//1) + ' seconds')
 
 adapter = "AGATCGGAAGAGCGGTTCAG"
@@ -684,4 +702,5 @@ if __name__ == "__main__":
 		barcodes_csv = barcodes_csv_input,
 		min_score_5_p = min_score_input_5p,
 		min_score_3_p = min_score_input_3p,
+		sbatch_compression = False,
 		three_p_trim_q = 30)
