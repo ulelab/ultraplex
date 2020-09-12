@@ -1,4 +1,4 @@
-![Ultraplex Logo](logo2.png)
+![Ultraplex Logo](gif_logo.gif)
 Ultra-fast 5' and 3' demultiplexer. Able to quality-trim, adapter-trim and demultiplex a whole lane in 30 minutes.
 
 # Key Features
