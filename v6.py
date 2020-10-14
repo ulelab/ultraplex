@@ -771,8 +771,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	print_header()
 	start = time.time()
 
-	logging.basicConfig(level=logging.DEBUG,filename="ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
-
+	
 	## PARSE COMMAND LINE ARGUMENTS ##
 
 	parser = argparse.ArgumentParser(description='Ultra-fast demultiplexing of fastq files.')
@@ -843,6 +842,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	min_length = args.min_length
 	q5 = args.phredquality_5_prime
 
+
+
 	if ultra_mode:
 		print("Warning - ultra mode selected. This will generate very large temporary files!")
 
@@ -856,6 +857,11 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	check_N_position(five_p_bcs, "5")
 	check_N_position(three_p_bcs, "3")
 	
+
+	logging.basicConfig(level=logging.DEBUG,filename=output_directory+"ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
+
+
+
 	# remove files from previous runs
 	clean_files(save_name)
 
