@@ -437,7 +437,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 			for demulti_type, reads in this_buffer_dict.items():
 				if self._ultra_mode:
 					#/# work out this filename
-					filename = output_directory + 'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
+					filename = self._output_directory + 'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
 
 					if os.path.exists(filename):
 						append_write = 'a' # append if already exists
@@ -465,7 +465,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						file.write(output)
 				else:
 					#/# work out this filename
-					filename = output_directory+'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
+					filename = self._output_directory+'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
 
 					if os.path.exists(filename):
 						append_write = 'ab' # append if already exists
