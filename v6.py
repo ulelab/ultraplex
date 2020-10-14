@@ -698,9 +698,6 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 			if comma_split[1] == "" or len(comma_split) == 1:
 				# then there's no 3' barcode
 				five_p_bcs.append(comma_split[0])
-				print(comma_split[0])
-				print(comma_split[0].replace("N",""))
-				print(len(comma_split[0].replace("N","")))
 				if counter_5 == 1:
 					fivelength=len(comma_split[0].rstrip().replace("N",""))
 				else:
