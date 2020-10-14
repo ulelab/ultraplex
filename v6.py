@@ -477,7 +477,9 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 			prev_total = self._total_demultiplexed.get()
 			new_total = prev_total[0] + reads_written
 			if new_total - prev_total[1] >= 1_000_000:
-				print(str(new_total//1_000_000) + ' million reads processed')
+				prog_msg = str(new_total//1_000_000) + ' million reads processed'
+				print(prog_msg)
+				logging.info(prog_msg)
 				last_printed = new_total
 			else:
 				last_printed = prev_total[1]
