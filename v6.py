@@ -821,6 +821,9 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	# start qc
 	optional.add_argument("-q5", '--phredquality_5_prime', type=int, default=0,
 		nargs='?', help="quality trimming minimum score from 5' end - use with caution!")
+	output_directory = args.directory
+
+	logging.basicConfig(level=logging.DEBUG,filename=output_directory+"ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
 
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
@@ -839,7 +842,6 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	sbatch_compression = args.sbatchcompression
 	ultra_mode = args.ultra
 	ignore_space_warning = args.ignore_space_warning
-	output_directory = args.directory
 	min_length = args.min_length
 	q5 = args.phredquality_5_prime
 
@@ -857,10 +859,6 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	check_N_position(five_p_bcs, "5")
 	check_N_position(three_p_bcs, "3")
-	
-
-	logging.basicConfig(level=logging.DEBUG,filename=output_directory+"ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
-
 
 
 	# remove files from previous runs
