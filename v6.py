@@ -719,11 +719,11 @@ def check_enough_space(output_directory, input_file,
 	# Find the size of the input file
 	input_file_size = Path(input_file).stat().st_size
 	if ignore_space_warning:
-		if input_file_size > multiplier*free:
+		if not input_file_size < multiplier*free:
 			print("WARNING! System may not have enough free space to demultiplex")
 			print("(Warning has been ignored)")
 	else:
-		assert input_file_size > multiplier*free, "Not enough free space. To ignore this warning use option --ignore_space_warning"
+		assert input_file_size < free*multiplier, "Not enough free space. To ignore this warning use option --ignore_space_warning"
 
     
 def main(buffer_size = int(4*1024**2)): # 4 MB
