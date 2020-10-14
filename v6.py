@@ -701,16 +701,16 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 				print(comma_split[0])
 				print(len(comma_split[0].replace("N","")))
 				if counter_5 == 1:
-					fivelength=len(comma_split[0].replace("N",""))
+					fivelength=len(comma_split[0].rstrip().replace("N",""))
 				else:
-					assert len(comma_split[0].replace("N","")) == fivelength, "5' barcodes not consistent"
+					assert len(comma_split[0].rstrip().replace("N","")) == fivelength, "5' barcodes not consistent"
 			else:
 				# then we have 3 prime bcds
 				five_p_bcs.append(comma_split[0])
 				if counter_5 == 1:
-					fivelength=len(comma_split[0].replace("N",""))
+					fivelength=len(comma_split[0].rstrip().replace("N",""))
 				else:
-					assert len(comma_split[0].replace("N","")) == fivelength, "5' barcodes not consistent"
+					assert len(comma_split[0].rstrip().replace("N","")) == fivelength, "5' barcodes not consistent"
 				# find the 3' barcodes
 				three_ps = comma_split[1].split(";")
 				linked[comma_split[0]] = three_ps
