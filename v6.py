@@ -19,6 +19,11 @@ import argparse
 import shutil
 from pathlib import Path
 import logging
+from math import log10, floor
+
+
+def round_sig(x, sig=2):
+	return round(x, sig-int(floor(log10(abs(x))))-1)
 
 
 def make_5p_bc_dict(barcodes, min_score):
@@ -397,6 +402,9 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						except:
 							this_buffer_dict[comb_bc] = [read]
 
+						if not five_p_bc == "no_match":
+							assigned_reads+=1
+
 					elif trimmed: # if it is linked to 3' barcodes and has been trimmed
 						read, three_p_bc = three_p_demultiplex(read, 
 							self._three_p_bc_dict_of_dicts[five_p_bc], 
@@ -608,8 +616,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 
 	return workers, all_conn_r, all_conn_w
 
-def concatenate_files(save_name, sbatch_compression, 
-	ultra_mode,
+def concatenate_files(save_name, ultra_mode,
+	sbatch_compression, 
 	output_directory,
 	compression_threads = 4):
 	""" 
@@ -617,6 +625,7 @@ def concatenate_files(save_name, sbatch_compression,
 	different workers, then sends an sbatch command to compress
 	them all to fastqs.
 	"""
+
 
 	# First, file all the unique file names we have, ignoring threads
 	all_names = glob.glob("ultraplex_" + save_name +'*')
@@ -650,27 +659,26 @@ def concatenate_files(save_name, sbatch_compression,
 			else:
 				os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
-			for name in filenames:
-				os.remove(name)
 
 			# check if compression is complete
-			finished = False
-			print("Compressing....")
-			while not finished:
-				# assume it's complete
-				complete = True
-				# now actually check 
-				for this_type in all_types:
-					filename = glob.glob(output_directory + this_type + '*')
-					
-					if '.gz' not in filename[0]:
-						complete = False
+			if sbatch_compression:
+				finished = False
+				print("Compressing....")
+				while not finished:
+					# assume it's complete
+					complete = True
+					# now actually check 
+					for this_type in all_types:
+						filename = glob.glob(output_directory + this_type + '*')
+						
+						if '.gz' not in filename[0]:
+							complete = False
 
-				if complete:
-					finished = True
-					print("Compression complete!")
-				else:
-					time.sleep(1)
+					if complete:
+						finished = True
+						print("Compression complete!")
+					else:
+						time.sleep(1)
 	else: # if not ultra_mode
 		for this_type in all_types:
 			# find all files with this barcode (or barcode combination)
@@ -945,20 +953,20 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	# More stats for logging
 	total_qtrim = total_reads_qtrimmed.get()
-	total_qtrim_percent = str((total_qtrim/total_processed_reads)*100)
+	total_qtrim_percent = (total_qtrim/total_processed_reads)*100
 	total_adaptortrim = total_reads_adaptor_trimmed.get()
-	total_adaptortrim_percent = str((total_adaptortrim/total_processed_reads)*100)
+	total_adaptortrim_percent = (total_adaptortrim/total_processed_reads)*100
 	total_5p_no3 = total_reads_5p_no_3p.get()
-	total_5p_no3_percent = str((total_5p_no3/total_processed_reads)*100)
+	total_5p_no3_percent = (total_5p_no3/total_processed_reads)*100
 	total_ass = total_reads_assigned.get()
-	total_ass_percent = str((total_ass/total_processed_reads)*100)
-	qmsg = str(total_qtrim) + " (" + total_qtrim_percent + "%) reads quality trimmed"
+	total_ass_percent = (total_ass/total_processed_reads)*100
+	qmsg = str(total_qtrim) + " (" + str(round_sig(total_qtrim_percent,3)) + "%) reads quality trimmed"
 	logging.info(qmsg)
-	amsg = str(total_adaptortrim) + " (" + total_adaptortrim_percent + "%) reads adaptor trimmed"
+	amsg = str(total_adaptortrim) + " (" + str(round_sig(total_adaptortrim_percent,3)) + "%) reads adaptor trimmed"
 	logging.info(amsg)
-	fivemsg = str(total_5p_no3) + " (" + total_5p_no3_percent + "%) reads with correct 5' bc but 3' bc not found"
+	fivemsg = str(total_5p_no3) + " (" + str(round_sig(total_5p_no3_percent,3)) + "%) reads with correct 5' bc but 3' bc not found"
 	logging.info(fivemsg)
-	assmsg = str(total_ass) + " (" + total_ass_percent + "%) reads correctly assigned to sample files"
+	assmsg = str(total_ass) + " (" + str(round_sig(total_ass_percent,3)) + "%) reads correctly assigned to sample files"
 	logging.info(assmsg)
 
 
