@@ -624,6 +624,7 @@ def concatenate_files(save_name, sbatch_compression,
 	all_types = [] # ignoring threads
 	for name in all_names:
 		this_type = name.split("_tmp_thread_")[0]
+
 		if this_type not in all_types:
 			all_types.append(this_type)
 
@@ -636,17 +637,21 @@ def concatenate_files(save_name, sbatch_compression,
 			command = ''
 			for name in filenames:
 				command = command + name + ' '
-				command = 'cat ' + command + ' > ' + this_type + '.fastq'
-				os.system(command)
-				print("Compressing with pigz...")
-				c_thread_n = '-p' + str(compression_threads)
-				if sbatch_compression: 
-					os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
-				else:
-					os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
+			command = 'cat ' + command + ' > ' + this_type + '.fastq'
+			os.system(command)
 
-				for name in filenames:
-					os.remove(name)
+			for name in filenames:
+				os.remove(name)
+
+			print("Compressing with pigz...")
+			c_thread_n = '-p' + str(compression_threads)
+			if sbatch_compression: 
+				os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+			else:
+				os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
+
+			for name in filenames:
+				os.remove(name)
 
 			# check if compression is complete
 			finished = False
@@ -669,13 +674,16 @@ def concatenate_files(save_name, sbatch_compression,
 	else: # if not ultra_mode
 		for this_type in all_types:
 			# find all files with this barcode (or barcode combination)
-			filenames = glob.glob(this_type + '*')
+			filenames = glob.glob(output_directory + this_type + '*')
 			# then concatenate
 			command = ''
 			for name in filenames:
 				command = command + name + ' '
-				command = 'cat ' + command + ' > ' + this_type + '.fastq.gz'
-				os.system(command)
+			command = 'cat ' + command + ' > ' + this_type + '.fastq.gz'
+			os.system(command)
+
+			for name in filenames:
+				os.remove(name)
 
 def clean_files(save_name):
 	files = glob.glob('ultraplex_' + save_name +'*')
@@ -697,10 +705,12 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 			# First, find if theres a comma
 			line = row.rstrip()
 			comma_split = line.split(',')
-			
+
 			if len(comma_split) > 1:
 				if comma_split[1] == "":
 					just_5p = True
+				else:
+					just_5p = False
 			elif len(comma_split) == 1:
 				just_5p = True
 			else:
