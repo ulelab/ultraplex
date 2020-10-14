@@ -436,7 +436,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 			for demulti_type, reads in this_buffer_dict.items():
 				if self._ultra_mode:
 					#/# work out this filename
-					filename = output_directory + 'mDe_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
+					filename = output_directory + 'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
 
 					if os.path.exists(filename):
 						append_write = 'a' # append if already exists
@@ -464,7 +464,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						file.write(output)
 				else:
 					#/# work out this filename
-					filename = output_directory+'mDe_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
+					filename = output_directory+'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
 
 					if os.path.exists(filename):
 						append_write = 'ab' # append if already exists
@@ -595,7 +595,7 @@ def concatenate_files(save_name, sbatch_compression,
 	"""
 
 	# First, file all the unique file names we have, ignoring threads
-	all_names = glob.glob("mDe_" + save_name +'*')
+	all_names = glob.glob("ultraplex_" + save_name +'*')
 
 	all_types = [] # ignoring threads
 	for name in all_names:
@@ -654,7 +654,7 @@ def concatenate_files(save_name, sbatch_compression,
 				os.system(command)
 
 def clean_files(save_name):
-	files = glob.glob('mDe_' + save_name +'*')
+	files = glob.glob('ultraplex_' + save_name +'*')
 	for file in files:
 		os.remove(file)
 
