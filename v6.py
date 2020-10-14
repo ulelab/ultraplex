@@ -16,6 +16,8 @@ import time
 from abc import ABC, abstractmethod
 from dnaio import Sequence
 import argparse
+import shutil
+from pathlib import Path
 
 
 def make_5p_bc_dict(barcodes, min_score):
@@ -315,8 +317,10 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 	"""
 	def __init__(self, index,
 				 read_pipe, need_work_queue,
-				 adapter, five_p_bcs, three_p_bcs, 
+				 adapter, output_directory,
+				 five_p_bcs, three_p_bcs, 
 				 save_name, total_demultiplexed,
+				 ultra_mode,
 				 min_score_5_p, min_score_3_p,
 				 linked_bcs,
 				 start_qc =0, end_qc = 30,
@@ -341,6 +345,8 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 		self._three_p_bc_dict_of_dicts, self._3p_length = make_dict_of_3p_bc_dicts(self._linked_bcs, 
 			min_score = self._min_score_3_p) # a dict of dicts - each 5' barcodes has
 					# a dict of which 3' barcode matches the given sequence, which is also a dict
+		self._ultra_mode = ultra_mode
+		self._output_directory = output_directory
 
 	def run(self):
 		#try:
@@ -429,33 +435,62 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 
 			## Write out! ##
 			for demulti_type, reads in this_buffer_dict.items():
-				#/# work out this filename
-				filename = 'mDe_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
+				if self._ultra_mode:
+					#/# work out this filename
+					filename = self._output_directory + 'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
 
-				if os.path.exists(filename):
-					append_write = 'a' # append if already exists
+					if os.path.exists(filename):
+						append_write = 'a' # append if already exists
+					else:
+						append_write = 'w' # make a new file if not
+
+					with open(filename, append_write) as file:
+						this_out = []
+						for counter, read in enumerate(reads):
+							
+							# Quality control:
+							assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
+							
+							if counter == 0:
+								umi_l = len(read.name.split("rbc:")[1])
+							assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+							## combine into a single list
+							this_out.append("@" + read.name)
+							this_out.append(read.sequence)
+							this_out.append("+")
+							this_out.append(read.qualities)
+
+						output = '\n'.join(this_out) + '\n'
+						#print(output)
+						file.write(output)
 				else:
-					append_write = 'w' # make a new file if not
+					#/# work out this filename
+					filename = self._output_directory+'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
 
-				with open(filename, append_write) as file:
-					this_out = []
-					for counter, read in enumerate(reads):
-						
-						# Quality control:
-						assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-						
-						if counter == 0:
-							umi_l = len(read.name.split("rbc:")[1])
-						assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
-						## combine into a single list
-						this_out.append("@" + read.name)
-						this_out.append(read.sequence)
-						this_out.append("+")
-						this_out.append(read.qualities)
+					if os.path.exists(filename):
+						append_write = 'ab' # append if already exists
+					else:
+						append_write = 'wb' # make a new file if not
 
-					output = '\n'.join(this_out) + '\n'
-					#print(output)
-					file.write(output)
+					with gzip.open(filename, append_write) as file:
+						this_out = []
+						for counter, read in enumerate(reads):
+							
+							# Quality control:
+							assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
+							
+							if counter == 0:
+								umi_l = len(read.name.split("rbc:")[1])
+							assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+							## combine into a single list
+							this_out.append("@" + read.name)
+							this_out.append(read.sequence)
+							this_out.append("+")
+							this_out.append(read.qualities)
+
+						output = '\n'.join(this_out) + '\n'
+						#print(output)
+						file.write(output.encode())
 
 			prev_total = self._total_demultiplexed.get()
 			new_total = prev_total[0] + reads_written
@@ -513,7 +548,8 @@ def find_bc_and_umi_pos(barcodes):
 
 def start_workers(n_workers, input_file, need_work_queue, adapter,
 	five_p_bcs, three_p_bcs,  save_name, total_demultiplexed,
-	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q):
+	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
+	ultra_mode, output_directory):
 	"""
 	This function starts all the workers
 	"""
@@ -534,10 +570,12 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 			conn_r, # this is the "read_pipe"
 			need_work_queue, # worker tells the reader it needs work
 			adapter, # the 3' adapter to trim
+			output_directory,
 			five_p_bcs, 
 			three_p_bcs,
 			save_name, 
 			total_demultiplexed, 
+			ultra_mode,
 			min_score_5_p,
 			min_score_3_p = min_score_3_p,
 			linked_bcs = linked_bcs,
@@ -548,16 +586,18 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 
 	return workers, all_conn_r, all_conn_w
 
-def concatenate_files(save_name, sbatch_compression,
+def concatenate_files(save_name, sbatch_compression, 
+	ultra_mode,
+	output_directory,
 	compression_threads = 4):
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
-	them all to fastqs
+	them all to fastqs.
 	"""
 
 	# First, file all the unique file names we have, ignoring threads
-	all_names = glob.glob("mDe_" + save_name +'*')
+	all_names = glob.glob("ultraplex_" + save_name +'*')
 
 	all_types = [] # ignoring threads
 	for name in all_names:
@@ -566,51 +606,59 @@ def concatenate_files(save_name, sbatch_compression,
 			all_types.append(this_type)
 
 	# now concatenate them
-	for this_type in all_types:
-		filenames = glob.glob(this_type + '*')
-		# build command
-		command = ''
-		for name in filenames:
-			command = command + name + ' '
-
-		command = 'cat ' + command + ' > ' + this_type + '.fastq'
-		
-		os.system(command)
-
-		print("Compressing with pigz...")
-		c_thread_n = '-p' + str(compression_threads)
-		if sbatch_compression: 
-			os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
-		else:
-			os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
-
-		for name in filenames:
-			os.remove(name)
-
-	# check if compression is complete
-	finished = False
-	print("Compressing....")
-	while not finished:
-		# assume it's complete
-		complete = True
-		# now actually check 
+	if ultra_mode:
 		for this_type in all_types:
-			filename = glob.glob(this_type + '*')
-			
-			if '.gz' not in filename[0]:
-				complete = False
+			# find all files with this barcode (or barcode combination)
+			filenames = glob.glob(output_directory + this_type + '*')
+			# then concatenate
+			command = ''
+			for name in filenames:
+				command = command + name + ' '
+				command = 'cat ' + command + ' > ' + this_type + '.fastq'
+				os.system(command)
+				print("Compressing with pigz...")
+				c_thread_n = '-p' + str(compression_threads)
+				if sbatch_compression: 
+					os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+				else:
+					os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
-		if complete:
-			finished = True
-			print("Compression complete!")
-		else:
-			time.sleep(1)
+				for name in filenames:
+					os.remove(name)
+
+			# check if compression is complete
+			finished = False
+			print("Compressing....")
+			while not finished:
+				# assume it's complete
+				complete = True
+				# now actually check 
+				for this_type in all_types:
+					filename = glob.glob(output_directory + this_type + '*')
+					
+					if '.gz' not in filename[0]:
+						complete = False
+
+				if complete:
+					finished = True
+					print("Compression complete!")
+				else:
+					time.sleep(1)
+	else: # if not ultra_mode
+		for this_type in all_types:
+			# find all files with this barcode (or barcode combination)
+			filenames = glob.glob(this_type + '*')
+			# then concatenate
+			command = ''
+			for name in filenames:
+				command = command + name + ' '
+				command = 'cat ' + command + ' > ' + this_type + '.fastq.gz'
+				os.system(command)
 
 def clean_files(save_name):
-	files = glob.glob('mDe_' + save_name +'*')
+	files = glob.glob('ultraplex_' + save_name +'*')
 	for file in files:
 		os.remove(file)
-
 
 def process_bcs(csv, mismatch_5p, mismatch_3p):
 
@@ -657,6 +705,28 @@ def print_header():
 	print("@@@       @@@@.        @@@@@   @@@@@&   @@@.   &   &@@@@    @    @@@@@@@@         @          @    @@@@    @@@@")
 	print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
 	print("")
+
+
+def check_enough_space(output_directory, input_file,
+	ignore_space_warning, ultra_mode):
+	# First, find the free space on the output directory
+	if output_directory == "":
+		output_directory = os.getcwd()
+	total, used, free = shutil.disk_usage(output_directory)
+
+	if ultra_mode:
+		multiplier = 0.098
+	else:
+		multiplier = 0.98
+	# Find the size of the input file
+	input_file_size = Path(input_file).stat().st_size
+	if ignore_space_warning:
+		if not input_file_size < multiplier*free:
+			print("WARNING! System may not have enough free space to demultiplex")
+			print("(Warning has been ignored)")
+	else:
+		assert input_file_size < free*multiplier, "Not enough free space. To ignore this warning use option --ignore_space_warning"
+
     
 def main(buffer_size = int(4*1024**2)): # 4 MB
 	print_header()
@@ -671,6 +741,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 						help='fastq file to be demultiplexed')
 	required.add_argument('-b',"--barcodes", type=str, required=True,
 						help='barcodes for demultiplexing in csv format')
+	optional.add_argument('-d', "--directory", type=str, default = "", nargs='?',
+		help = "optional output directory")
 	optional.add_argument('-m5',"--fiveprimemismatches", type=int, default=1, nargs='?',
 						help='number of mismatches allowed for 5prime barcode [DEFAULT 1]')
 	optional.add_argument('-m3',"--threeprimemismatches", type=int, default=0, nargs='?',
@@ -685,6 +757,11 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 						help='prefix for output sequences [DEFAULT demux]')
 	optional.add_argument('-sb',"--sbatchcompression", action='store_true', default=False,
 						help='whether to compress output fastq using SLURM sbatch')
+	optional.add_argument('-u',"--ultra", action='store_true', default=False,
+					help='whether to use ultra mode, which is faster but makes very large temporary files')
+	optional.add_argument('-ig',"--ignore_space_warning", action='store_true', default=False,
+					help='whether to ignore warnings that there is not enough free space')
+
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
 	print(args)
@@ -697,6 +774,16 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	adapter = args.adapter
 	save_name = args.outputprefix
 	sbatch_compression = args.sbatchcompression
+	ultra_mode = args.ultra
+	ignore_space_warning = args.ignore_space_warning
+	output_directory = args.directory
+
+	if ultra_mode:
+		print("Warning - ultra mode selected. This will generate very large temporary files!")
+
+	assert output_directory=="" or output_directory[len(output_directory)-1]=="/", "Error! Directory must end with '/'"
+
+	check_enough_space(output_directory,file_name,ignore_space_warning, ultra_mode)
 
 	# process the barcodes csv 
 	five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p, mismatch_3p)
@@ -716,7 +803,9 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 		three_p_bcs, save_name, 
 		total_demultiplexed,
 		min_score_5_p, min_score_3_p, 
-		linked_bcs, three_p_trim_q)
+		linked_bcs, three_p_trim_q,
+		ultra_mode,
+		output_directory)
 
 	print("Demultiplexing...")
 	reader_process = ReaderProcess(file_name, all_conn_w,
@@ -724,7 +813,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	reader_process.daemon = True
 	reader_process.run()
 
-	concatenate_files(save_name, sbatch_compression)
+	concatenate_files(save_name, ultra_mode, sbatch_compression, output_directory)
 	print("Demultiplexing complete! " + str(total_demultiplexed.get()[0])+' reads written in ' +str((time.time()-start)//1) + ' seconds')
 
 
