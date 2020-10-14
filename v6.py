@@ -591,7 +591,7 @@ def concatenate_files(save_name, sbatch_compression,
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
-	them all to fastqs
+	them all to fastqs.
 	"""
 
 	# First, file all the unique file names we have, ignoring threads
