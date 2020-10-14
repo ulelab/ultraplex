@@ -273,14 +273,15 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 				 ultra_mode,
 				 min_score_5_p, min_score_3_p,
 				 linked_bcs,
-				 start_qc =0, end_qc = 30,
-				 min_length = 22):
+				 three_p_trim_q,
+				 min_length,
+				 q5):
 		super().__init__()
 		self._id = index # the worker id
 		self._read_pipe = read_pipe # the pipe the reader reads data from
 		self._need_work_queue = need_work_queue # worker adds its id to this queue when it needs work
-		self._start_qc = start_qc # quality score to trim qc from 5' end
-		self._end_qc = end_qc # quality score to trim qc from 3' end
+		self._end_qc = q5 # quality score to trim qc from 3' end
+		self._start_qc = three_p_trim_q # quality score to trim qc from 5' end
 		self._total_demultiplexed = total_demultiplexed # a queue which keeps track of the total number of reads processed
 		self._adapter = adapter # the 3' adapter 
 		self._min_length = min_length # the minimum length of a read after quality and adapter trimming to include. Remember
@@ -499,7 +500,7 @@ def find_bc_and_umi_pos(barcodes):
 def start_workers(n_workers, input_file, need_work_queue, adapter,
 	five_p_bcs, three_p_bcs,  save_name, total_demultiplexed,
 	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
-	ultra_mode, output_directory):
+	ultra_mode, output_directory, min_length, q5):
 	"""
 	This function starts all the workers
 	"""
@@ -527,9 +528,11 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 			total_demultiplexed, 
 			ultra_mode,
 			min_score_5_p,
-			min_score_3_p = min_score_3_p,
-			linked_bcs = linked_bcs,
-			end_qc = three_p_trim_q)
+			min_score_3_p,
+			linked_bcs,
+			three_p_trim_q,
+			min_length,
+			q5)
 
 		worker.start()
 		workers.append(worker)
@@ -687,30 +690,49 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	parser = argparse.ArgumentParser(description='Ultra-fast demultiplexing of fastq files.')
 	optional = parser._action_groups.pop()
 	required = parser.add_argument_group('required arguments')
+	# input
 	required.add_argument('-i',"--inputfastq", type=str, required=True,
 						help='fastq file to be demultiplexed')
+	# barcodes csv
 	required.add_argument('-b',"--barcodes", type=str, required=True,
 						help='barcodes for demultiplexing in csv format')
+	# output directory
 	optional.add_argument('-d', "--directory", type=str, default = "", nargs='?',
 		help = "optional output directory")
+	# 5' mismatches
 	optional.add_argument('-m5',"--fiveprimemismatches", type=int, default=1, nargs='?',
 						help='number of mismatches allowed for 5prime barcode [DEFAULT 1]')
+	# 3' mismatches
 	optional.add_argument('-m3',"--threeprimemismatches", type=int, default=0, nargs='?',
 						help='number of mismatches allowed for 3prime barcode [DEFAULT 0]')
+	# minimum quality score
 	optional.add_argument('-q',"--phredquality", type=int, default=30, nargs='?',
 						help='phred quality score for 3prime end trimming')
-	optional.add_argument('-t',"--threads", type=int, default=8, nargs='?',
-						help='threads [DEFAULT 8]')
+	# threads
+	optional.add_argument('-t',"--threads", type=int, default=4, nargs='?',
+						help='threads [DEFAULT 4]')
+	# adapter sequence
 	optional.add_argument('-a',"--adapter", type=str, default="AGATCGGAAGAGCGGTTCAG", nargs='?',
 						help='sequencing adapter to trim [DEFAULT Illumina AGATCGGAAGAGCGGTTCAG]')
+	# name of output file
 	optional.add_argument('-o',"--outputprefix", type=str, default="demux", nargs='?',
 						help='prefix for output sequences [DEFAULT demux]')
+	# use sbatch compression in ultra mode
 	optional.add_argument('-sb',"--sbatchcompression", action='store_true', default=False,
 						help='whether to compress output fastq using SLURM sbatch')
+	# ultra mode
 	optional.add_argument('-u',"--ultra", action='store_true', default=False,
 					help='whether to use ultra mode, which is faster but makes very large temporary files')
+	# free space ignore warning
 	optional.add_argument('-ig',"--ignore_space_warning", action='store_true', default=False,
 					help='whether to ignore warnings that there is not enough free space')
+	# minimum length of read before trimming
+	optional.add_argument('-l', '--min_length', type=int, default = 22,
+		nargs='?', help =  ("minimum length of reads before any trimming takes place. Remember"
+		"that this must include UMIs and barcodes, so should be fairly long!"))
+	# start qc
+	optional.add_argument("-q5", '--phredquality_5_prime', type=int, default=0,
+		nargs='?', help="quality trimming minimum score from 5' end - use with caution!")
 
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
@@ -727,6 +749,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	ultra_mode = args.ultra
 	ignore_space_warning = args.ignore_space_warning
 	output_directory = args.directory
+	min_length = args.min_length
+	q5 = args.phredquality_5_prime
 
 	if ultra_mode:
 		print("Warning - ultra mode selected. This will generate very large temporary files!")
@@ -755,7 +779,9 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 		min_score_5_p, min_score_3_p, 
 		linked_bcs, three_p_trim_q,
 		ultra_mode,
-		output_directory)
+		output_directory,
+		min_length,
+		q5)
 
 	print("Demultiplexing...")
 	reader_process = ReaderProcess(file_name, all_conn_w,
