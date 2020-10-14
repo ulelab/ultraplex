@@ -697,7 +697,15 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 			line = row.rstrip()
 			comma_split = line.split(',')
 			
-			if comma_split[1] == "" or len(comma_split) == 1:
+			if len(comma_split) > 1:
+				if comma_split[1] == "":
+					just_5p = True
+			elif len(comma_split) == 1:
+				just_5p = True
+			else:
+				just_5p = False
+			
+			if just_5p:
 				# then there's no 3' barcode
 				five_p_bcs.append(comma_split[0])
 				if counter_5 == 1:
