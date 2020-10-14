@@ -685,8 +685,12 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 	three_p_bcs = []
 	linked = {}
 
+	counter_5 = 0
+	counter_3 = 0
+
 	with open(csv, 'r') as file:
 		for row in file:
+			counter_5 += 1
 			# First, find if theres a comma
 			line = row.rstrip()
 			comma_split = line.split(',')
@@ -694,17 +698,25 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 			if len(comma_split) == 1:
 				# then there's no 3' barcode
 				five_p_bcs.append(comma_split[0])
-				fivelength=len(comma_split[0].replace("N",""))
+				if counter_5 == 1:
+					fivelength=len(comma_split[0].replace("N",""))
+				else:
+					assert len(comma_split[0].replace("N","")) == fivelength, "5' barcodes not consistent"
 			elif len(comma_split) == 2:
 				# then we have 3 prime bcds
 				five_p_bcs.append(comma_split[0])
+				fivelength=len(comma_split[0].replace("N",""))
 				# find the 3' barcodes
 				three_ps = comma_split[1].split(";")
 				linked[comma_split[0]] = three_ps
 
 				for bc in three_ps:
+					counter_3 += 1
 					three_p_bcs.append(bc)
-					threelength=len(bc.replace("N",""))
+					if counter_3 == 1:
+						threelength=len(bc.replace("N",""))
+					else:
+						assert len(bc.replace("N","")) == threelength, "3' barcodes not consistent"
 
 	# remove duplicates
 	five_p_bcs = list(dict.fromkeys(five_p_bcs))
