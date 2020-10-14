@@ -23,7 +23,11 @@ from math import log10, floor
 
 
 def round_sig(x, sig=2):
-	return round(x, sig-int(floor(log10(abs(x))))-1)
+	try:
+		to_return = round(x, sig-int(floor(log10(abs(x))))-1)
+	except:
+		to_return = 0
+	return to_return
 
 
 def make_5p_bc_dict(barcodes, min_score):
@@ -759,6 +763,7 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 		match_3p = threelength - mismatch_3p
 	else:
 		match_3p = 100000
+	
 	return five_p_bcs, three_p_bcs, linked, match_5p, match_3p
 
 def print_header():
