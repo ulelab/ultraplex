@@ -140,56 +140,6 @@ class ReaderProcess(Process):
 		connection.send(chunk_index)  # send the index of this chunk to the worker
 		connection.send_bytes(chunk)  # /# send the actual data to this worker
 
-class OutputFiles:
-	"""
-	The attributes are open file-like objects except when demultiplex is True. In that case,
-	untrimmed, untrimmed2, out and out2 are file names or templates
-	as required by the used demultiplexer ('{name}' etc.).
-	Files may also be None.
-	"""
-	def __init__(
-		self,
-		out: Optional[BinaryIO] = None,
-		out2: Optional[BinaryIO] = None,
-		untrimmed: Optional[BinaryIO] = None,
-		untrimmed2: Optional[BinaryIO] = None,
-		too_short: Optional[BinaryIO] = None,
-		too_short2: Optional[BinaryIO] = None,
-		too_long: Optional[BinaryIO] = None,
-		too_long2: Optional[BinaryIO] = None,
-		info: Optional[BinaryIO] = None,
-		rest: Optional[BinaryIO] = None,
-		wildcard: Optional[BinaryIO] = None,
-		demultiplex: bool = False,
-		force_fasta: Optional[bool] = None,
-	):
-		self.out = out
-		self.out2 = out2
-		self.untrimmed = untrimmed
-		self.untrimmed2 = untrimmed2
-		self.too_short = too_short
-		self.too_short2 = too_short2
-		self.too_long = too_long
-		self.too_long2 = too_long2
-		self.info = info
-		self.rest = rest
-		self.wildcard = wildcard
-		self.demultiplex = demultiplex
-		self.force_fasta = force_fasta
-
-	def __iter__(self):
-		yield self.out
-		yield self.out2
-		yield self.untrimmed
-		yield self.untrimmed2
-		yield self.too_short
-		yield self.too_short2
-		yield self.too_long
-		yield self.too_long2
-		yield self.info
-		yield self.rest
-		yield self.wildcard
-
 class InputFiles:
 	"""
 	this is from cutadapt - basically just creates a dnaio object
