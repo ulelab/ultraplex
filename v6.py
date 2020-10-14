@@ -231,7 +231,10 @@ def three_p_demultiplex(read, d, length):
 		# add to umi
 		umi_poses = [a == 'N' for a in assigned]
 		umi = ''.join(bc[a] for a in umi_poses)
-		read.name = read.name + umi
+		if "rbc:" in read.name: 
+			read.name = read.name + umi
+		else:
+			read.name = read.name + "rbc:" + umi
 
 	return read, assigned
 
@@ -510,6 +513,12 @@ def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
 	this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
 	winner = five_p_bc_dict[this_bc_seq]
 
+	# check if "rbc:" already in header
+	if "rbc:" in read.name:
+		to_add = ""
+	else: # if not
+		to_add = "rbc:"
+
 	if not winner == "no_match":
 		#/# find umi sequence
 		this_five_p_umi = ''.join([read.sequence[i] for i in five_p_umi_poses[winner]])
@@ -519,9 +528,9 @@ def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
 		read.qualities= read.qualities[len(winner):]
 
 		# to read header add umi and 5' barcode info
-		read.name = (read.name.replace(" ", "")+"rbc:" + this_five_p_umi)
+		read.name = (read.name.replace(" ", "")+to_add + this_five_p_umi)
 	else:
-		read.name = read.name + 'rbc:'
+		read.name = read.name + to_add
 	
 
 
@@ -749,7 +758,7 @@ def check_N_position(bcds, type):
 				ref_pos = min(non_N)				
 			else:
 				# look for last non_n
-				ref_pos = len(bcd) - max(non_N) # not just max(non_N) because what it different UMI length at 5' end of 3' bcd
+				ref_pos = len(bcd) - max(non_N) # not just max(non_N) because need to allow for different UMI length at 5' end of 3' bcd
 
 			if counter == 0:
 				correct_pos = ref_pos
