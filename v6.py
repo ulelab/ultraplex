@@ -246,6 +246,7 @@ def make_dict_of_3p_bc_dicts(linked_bcs, min_score):
 	"""
 	d = {}
 	lengths = {}
+	three_p_length = 0 # initialise
 	for five_p_bc, three_p_bcs in linked_bcs.items():
 		if len(three_p_bcs) > 0: # ie this 5' barcode has 3' barcodes
 
@@ -736,7 +737,10 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 	three_p_bcs = list(dict.fromkeys(three_p_bcs))
 
 	match_5p = fivelength - mismatch_5p
-	match_3p = threelength - mismatch_3p
+	if counter_3 > 0:
+		match_3p = threelength - mismatch_3p
+	else:
+		match_3p = 100000
 	return five_p_bcs, three_p_bcs, linked, match_5p, match_3p
 
 def print_header():
