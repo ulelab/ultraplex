@@ -737,6 +737,27 @@ def check_enough_space(output_directory, input_file,
 		assert input_file_size < free*multiplier, "Not enough free space. To ignore this warning use option --ignore_space_warning"
 
     
+def check_N_position(bcds, type):
+	# checks that UMI positions result in consistent barcode
+	if not len(bcds) == 0:
+		for counter, bcd in enumerate(bcds):
+			# find positions of non-N
+			non_n = [a for a, b in enumerate(bcd) if b !="N"]
+
+			if type == "5":
+				# then look for first non N
+				ref_pos = min(non_N)				
+			else:
+				# look for last non_n
+				ref_pos = len(bcd) - max(non_N) # not just max(non_N) because what it different UMI length at 5' end of 3' bcd
+
+			if counter == 0:
+				correct_pos = ref_pos
+			else:
+				assert ref_pos == correct_pos, "UMI positions not consistent"
+
+
+
 def main(buffer_size = int(4*1024**2)): # 4 MB
 	print_header()
 	start = time.time()
@@ -822,6 +843,9 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	# process the barcodes csv 
 	five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p, mismatch_3p)
+
+	check_N_position(five_p_bcs, "5")
+	check_N_position(three_p_bcs, "3")
 	
 	# remove files from previous runs
 	clean_files(save_name)
