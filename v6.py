@@ -438,6 +438,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 					append_write = 'w' # make a new file if not
 
 				with open(filename, append_write) as file:
+					this_out = []
 					for counter, read in enumerate(reads):
 						
 						# Quality control:
@@ -446,11 +447,15 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						if counter == 0:
 							umi_l = len(read.name.split("rbc:")[1])
 						assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+						## combine into a single list
+						this_out.append("@" + read.name)
+						this_out.append(read.sequence)
+						this_out.append("+")
+						this_out.append(read.qualities)
 
-						file.write('@' + read.name +'\n')
-						file.write(read.sequence +'\n')
-						file.write("+\n")
-						file.write(read.qualities+'\n')					
+					output = '\n'.join(this_out) + '\n'
+					#print(output)
+					file.write(output)
 
 			prev_total = self._total_demultiplexed.get()
 			new_total = prev_total[0] + reads_written
