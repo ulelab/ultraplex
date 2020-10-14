@@ -1,0 +1,6 @@
+2020-10-14 18:11:12,899 INFO     Namespace(adapter='AGATCGGAAGAGCGGTTCAG', barcodes='barcodes.csv', fiveprimemismatches=1, inputfastq='test_demux.fq.gz', outputprefix='demux', phredquality=30, sbatchcompression=False, threads=8, threeprimemismatches=0)
+2020-10-14 18:11:14,416 INFO     Demultiplexing complete! 20 reads processed in 1.0 seconds
+2020-10-14 18:11:14,417 INFO     2 (10.0%) reads quality trimmed
+2020-10-14 18:11:14,417 INFO     0 (0.0%) reads adaptor trimmed
+2020-10-14 18:11:14,417 INFO     0 (0.0%) reads with correct 5' bc but 3' bc not found
+2020-10-14 18:11:14,417 INFO     0 (0.0%) reads correctly assigned to sample files

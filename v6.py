@@ -18,6 +18,7 @@ from dnaio import Sequence
 import argparse
 import shutil
 from pathlib import Path
+import logging
 
 
 def make_5p_bc_dict(barcodes, min_score):
@@ -271,6 +272,8 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 				 five_p_bcs, three_p_bcs, 
 				 save_name, total_demultiplexed,
 				 ultra_mode,
+				 total_reads_assigned, total_reads_qtrimmed, total_reads_adaptor_trimmed,
+				 total_reads_5p_no_3p,
 				 min_score_5_p, min_score_3_p,
 				 linked_bcs,
 				 three_p_trim_q,
@@ -283,6 +286,10 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 		self._end_qc = q5 # quality score to trim qc from 3' end
 		self._start_qc = three_p_trim_q # quality score to trim qc from 5' end
 		self._total_demultiplexed = total_demultiplexed # a queue which keeps track of the total number of reads processed
+		self._total_reads_assigned = total_reads_assigned # a queue which keeps track of the total number of reads assigned to sample files
+		self._total_reads_qtrimmed = total_reads_qtrimmed # a queue which keeps track of the total number of reads quality trimmed
+		self._total_reads_adaptor_trimmed =  total_reads_adaptor_trimmed # a queue which keeps track of the total number of reads adaptor trimmed
+		self._total_reads_5p_no_3p = total_reads_5p_no_3p # a queue which keeps track of how many reads have correct 5p BC but cannot find 3p BC
 		self._adapter = adapter # the 3' adapter 
 		self._min_length = min_length # the minimum length of a read after quality and adapter trimming to include. Remember
 									  # that this needs to include the length of the barcodes and umis, so should be quite long eg 22 nt
@@ -332,18 +339,31 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 			five_p_bcs = []
 			this_buffer_dict = {}
 			reads_written = 0
+			assigned_reads = 0
+			reads_quality_trimmed = 0
+			reads_adaptor_trimmed = 0
+			five_no_three_reads = 0
 
 			for read in InputFiles(infiles).open():
 				reads_written += 1
 				#/# first, trim by quality score
 				q_start, q_stop = quality_trim_index(read.qualities, self._start_qc, self._end_qc)
+				prev_length = len(read.sequence)
 				read = read[q_start:q_stop]
+				if not len(read.sequence) == prev_length:
+					# then it was trimmed
+					trimmed = True
+					reads_quality_trimmed += 1
+				else:
+					trimmed = False
+
 				#/# then, trim adapter
 				prev_length = len(read.sequence)
 				read = cutter(read, ModificationInfo(read))
 				if not len(read.sequence) == prev_length:
 					# then it was trimmed
 					trimmed = True
+					reads_adaptor_trimmed += 1
 				else:
 					trimmed = False
 
@@ -355,6 +375,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						self._five_p_barcodes_pos,
 						self._five_p_umi_poses,
 						self._five_p_bc_dict)
+
 
 					#/# demultiplex at the 3' end
 					# First, check if this 5' barcode has any 3' barcodes
@@ -372,10 +393,15 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 							this_buffer_dict[comb_bc] = [read]
 
 					elif trimmed: # if it is linked to 3' barcodes and has been trimmed
-
 						read, three_p_bc = three_p_demultiplex(read, 
 							self._three_p_bc_dict_of_dicts[five_p_bc], 
 							length = self._3p_length)
+
+						if not three_p_bc == "no_match":
+							assigned_reads += 1
+
+						if three_p_bc == "no_match":
+							five_no_three_reads += 1
 
 						comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
 
@@ -443,6 +469,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 						#print(output)
 						file.write(output.encode())
 
+			# LOG reads processed
 			prev_total = self._total_demultiplexed.get()
 			new_total = prev_total[0] + reads_written
 			if new_total - prev_total[1] >= 1_000_000:
@@ -451,6 +478,26 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 			else:
 				last_printed = prev_total[1]
 			self._total_demultiplexed.put([new_total, last_printed])
+
+			# LOG quality trimming
+			prev_total = self._total_reads_qtrimmed.get()
+			new_total = prev_total + reads_quality_trimmed
+			self._total_reads_qtrimmed.put(new_total)
+
+			# LOG adaptor trimming
+			prev_total = self._total_reads_adaptor_trimmed.get()
+			new_total = prev_total + reads_adaptor_trimmed
+			self._total_reads_adaptor_trimmed.put(new_total)
+
+			# LOG reads assigned
+			prev_total = self._total_reads_assigned.get()
+			new_total = prev_total + assigned_reads
+			self._total_reads_assigned.put(new_total)
+
+			# LOG 5' no 3' reads
+			prev_total = self._total_reads_5p_no_3p.get()
+			new_total = prev_total + five_no_three_reads
+			self._total_reads_5p_no_3p.put(new_total)
 
 
 def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
@@ -498,7 +545,8 @@ def find_bc_and_umi_pos(barcodes):
 	return bc_pos, umi_poses
 
 def start_workers(n_workers, input_file, need_work_queue, adapter,
-	five_p_bcs, three_p_bcs,  save_name, total_demultiplexed,
+	five_p_bcs, three_p_bcs,  save_name, total_demultiplexed, total_reads_assigned, 
+	total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
 	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
 	ultra_mode, output_directory, min_length, q5):
 	"""
@@ -509,6 +557,10 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 	all_conn_w = []
 
 	total_demultiplexed.put([0,0]) # [total written, last time it was printed] - initialise [0,0]
+	total_reads_assigned.put(0)
+	total_reads_qtrimmed.put(0)
+	total_reads_adaptor_trimmed.put(0)
+	total_reads_5p_no_3p.put(0)
 
 	for index in range(n_workers):
 		
@@ -526,6 +578,10 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 			three_p_bcs,
 			save_name, 
 			total_demultiplexed, 
+			total_reads_assigned, 
+			total_reads_qtrimmed, 
+			total_reads_adaptor_trimmed,
+			total_reads_5p_no_3p,
 			ultra_mode,
 			min_score_5_p,
 			min_score_3_p,
@@ -685,6 +741,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	print_header()
 	start = time.time()
 
+	logging.basicConfig(level=logging.DEBUG,filename="ultraplex.log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
+
 	## PARSE COMMAND LINE ARGUMENTS ##
 
 	parser = argparse.ArgumentParser(description='Ultra-fast demultiplexing of fastq files.')
@@ -736,7 +794,10 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
+
 	print(args)
+	logging.info(args)
+
 	file_name = args.inputfastq
 	barcodes_csv = args.barcodes
 	mismatch_5p = args.fiveprimemismatches
@@ -769,13 +830,18 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	#/# a signal
 	need_work_queue = Queue()
 	total_demultiplexed=Queue()
+	total_reads_assigned=Queue()
+	total_reads_qtrimmed=Queue()
+	total_reads_adaptor_trimmed=Queue()
+	total_reads_5p_no_3p=Queue()
 
 	#/# make a bunch of workers
 	workers, all_conn_r, all_conn_w = start_workers(threads, 
 		file_name, need_work_queue,
 		adapter, five_p_bcs,
 		three_p_bcs, save_name, 
-		total_demultiplexed,
+		total_demultiplexed, total_reads_assigned, total_reads_qtrimmed,
+		total_reads_adaptor_trimmed, total_reads_5p_no_3p,
 		min_score_5_p, min_score_3_p, 
 		linked_bcs, three_p_trim_q,
 		ultra_mode,
@@ -790,7 +856,30 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	reader_process.run()
 
 	concatenate_files(save_name, ultra_mode, sbatch_compression, output_directory)
-	print("Demultiplexing complete! " + str(total_demultiplexed.get()[0])+' reads written in ' +str((time.time()-start)//1) + ' seconds')
+
+	total_processed_reads = total_demultiplexed.get()[0]
+	runtime_seconds = str((time.time()-start)//1)
+	finishing_msg = "Demultiplexing complete! " + str(total_processed_reads) +' reads processed in ' + runtime_seconds + ' seconds'
+	print(finishing_msg)
+	logging.info(finishing_msg)
+
+	# More stats for logging
+	total_qtrim = total_reads_qtrimmed.get()
+	total_qtrim_percent = str((total_qtrim/total_processed_reads)*100)
+	total_adaptortrim = total_reads_adaptor_trimmed.get()
+	total_adaptortrim_percent = str((total_adaptortrim/total_processed_reads)*100)
+	total_5p_no3 = total_reads_5p_no_3p.get()
+	total_5p_no3_percent = str((total_5p_no3/total_processed_reads)*100)
+	total_ass = total_reads_assigned.get()
+	total_ass_percent = str((total_ass/total_processed_reads)*100)
+	qmsg = str(total_qtrim) + " (" + total_qtrim_percent + "%) reads quality trimmed"
+	logging.info(qmsg)
+	amsg = str(total_adaptortrim) + " (" + total_adaptortrim_percent + "%) reads adaptor trimmed"
+	logging.info(amsg)
+	fivemsg = str(total_5p_no3) + " (" + total_5p_no3_percent + "%) reads with correct 5' bc but 3' bc not found"
+	logging.info(fivemsg)
+	assmsg = str(total_ass) + " (" + total_ass_percent + "%) reads correctly assigned to sample files"
+	logging.info(assmsg)
 
 
 if __name__ == "__main__":
