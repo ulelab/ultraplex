@@ -771,7 +771,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	print_header()
 	start = time.time()
 
-	logging.basicConfig(level=logging.DEBUG,filename="ultraplex.log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
+	logging.basicConfig(level=logging.DEBUG,filename="ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
 
 	## PARSE COMMAND LINE ARGUMENTS ##
 
