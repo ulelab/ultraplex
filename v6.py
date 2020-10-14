@@ -619,7 +619,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 def concatenate_files(save_name, ultra_mode,
 	sbatch_compression, 
 	output_directory,
-	compression_threads = 4):
+	compression_threads = 8):
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
