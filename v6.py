@@ -821,12 +821,15 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	# start qc
 	optional.add_argument("-q5", '--phredquality_5_prime', type=int, default=0,
 		nargs='?', help="quality trimming minimum score from 5' end - use with caution!")
+	
+	parser._action_groups.append(optional)
+	args = parser.parse_args()
+
 	output_directory = args.directory
 
 	logging.basicConfig(level=logging.DEBUG,filename=output_directory+"ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
 
-	parser._action_groups.append(optional)
-	args = parser.parse_args()
+
 
 	print(args)
 	logging.info(args)
