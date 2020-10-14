@@ -584,10 +584,10 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 
 	return workers, all_conn_r, all_conn_w
 
-def concatenate_files(save_name, sbatch_compression,
-	compression_threads = 4, 
+def concatenate_files(save_name, sbatch_compression, 
 	ultra_mode,
-	output_directory):
+	output_directory,
+	compression_threads = 4):
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
@@ -811,7 +811,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	reader_process.daemon = True
 	reader_process.run()
 
-	concatenate_files(save_name, sbatch_compression, output_directory)
+	concatenate_files(save_name, ultra_mode, sbatch_compression, output_directory)
 	print("Demultiplexing complete! " + str(total_demultiplexed.get()[0])+' reads written in ' +str((time.time()-start)//1) + ' seconds')
 
 
