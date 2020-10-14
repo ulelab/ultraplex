@@ -751,7 +751,7 @@ def check_N_position(bcds, type):
 	if not len(bcds) == 0:
 		for counter, bcd in enumerate(bcds):
 			# find positions of non-N
-			non_n = [a for a, b in enumerate(bcd) if b !="N"]
+			non_N = [a for a, b in enumerate(bcd) if b !="N"]
 
 			if type == "5":
 				# then look for first non N
