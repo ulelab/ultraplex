@@ -341,6 +341,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 		self._three_p_bc_dict_of_dicts, self._3p_length = make_dict_of_3p_bc_dicts(self._linked_bcs, 
 			min_score = self._min_score_3_p) # a dict of dicts - each 5' barcodes has
 					# a dict of which 3' barcode matches the given sequence, which is also a dict
+		self._ultra_mode = ultra_mode
 
 	def run(self):
 		#try:
@@ -429,33 +430,62 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 
 			## Write out! ##
 			for demulti_type, reads in this_buffer_dict.items():
-				#/# work out this filename
-				filename = 'mDe_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
+				if self._ultra_mode:
+					#/# work out this filename
+					filename = 'mDe_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
 
-				if os.path.exists(filename):
-					append_write = 'a' # append if already exists
+					if os.path.exists(filename):
+						append_write = 'a' # append if already exists
+					else:
+						append_write = 'w' # make a new file if not
+
+					with open(filename, append_write) as file:
+						this_out = []
+						for counter, read in enumerate(reads):
+							
+							# Quality control:
+							assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
+							
+							if counter == 0:
+								umi_l = len(read.name.split("rbc:")[1])
+							assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+							## combine into a single list
+							this_out.append("@" + read.name)
+							this_out.append(read.sequence)
+							this_out.append("+")
+							this_out.append(read.qualities)
+
+						output = '\n'.join(this_out) + '\n'
+						#print(output)
+						file.write(output)
 				else:
-					append_write = 'w' # make a new file if not
+					#/# work out this filename
+					filename = 'mDe_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
 
-				with open(filename, append_write) as file:
-					this_out = []
-					for counter, read in enumerate(reads):
-						
-						# Quality control:
-						assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-						
-						if counter == 0:
-							umi_l = len(read.name.split("rbc:")[1])
-						assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
-						## combine into a single list
-						this_out.append("@" + read.name)
-						this_out.append(read.sequence)
-						this_out.append("+")
-						this_out.append(read.qualities)
+					if os.path.exists(filename):
+						append_write = 'ab' # append if already exists
+					else:
+						append_write = 'wb' # make a new file if not
 
-					output = '\n'.join(this_out) + '\n'
-					#print(output)
-					file.write(output)
+					with gzip.open(filename, append_write) as file:
+						this_out = []
+						for counter, read in enumerate(reads):
+							
+							# Quality control:
+							assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
+							
+							if counter == 0:
+								umi_l = len(read.name.split("rbc:")[1])
+							assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+							## combine into a single list
+							this_out.append("@" + read.name)
+							this_out.append(read.sequence)
+							this_out.append("+")
+							this_out.append(read.qualities)
+
+						output = '\n'.join(this_out) + '\n'
+						#print(output)
+						file.write(output.encode())
 
 			prev_total = self._total_demultiplexed.get()
 			new_total = prev_total[0] + reads_written
@@ -513,7 +543,8 @@ def find_bc_and_umi_pos(barcodes):
 
 def start_workers(n_workers, input_file, need_work_queue, adapter,
 	five_p_bcs, three_p_bcs,  save_name, total_demultiplexed,
-	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q):
+	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
+	ultra_mode):
 	"""
 	This function starts all the workers
 	"""
@@ -549,7 +580,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 	return workers, all_conn_r, all_conn_w
 
 def concatenate_files(save_name, sbatch_compression,
-	compression_threads = 4):
+	compression_threads = 4, 
+	ultra_mode):
 	""" 
 	this function concatenates all the files produced by the 
 	different workers, then sends an sbatch command to compress
@@ -566,51 +598,59 @@ def concatenate_files(save_name, sbatch_compression,
 			all_types.append(this_type)
 
 	# now concatenate them
-	for this_type in all_types:
-		filenames = glob.glob(this_type + '*')
-		# build command
-		command = ''
-		for name in filenames:
-			command = command + name + ' '
-
-		command = 'cat ' + command + ' > ' + this_type + '.fastq'
-		
-		os.system(command)
-
-		print("Compressing with pigz...")
-		c_thread_n = '-p' + str(compression_threads)
-		if sbatch_compression: 
-			os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
-		else:
-			os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
-
-		for name in filenames:
-			os.remove(name)
-
-	# check if compression is complete
-	finished = False
-	print("Compressing....")
-	while not finished:
-		# assume it's complete
-		complete = True
-		# now actually check 
+	if ultra_mode:
 		for this_type in all_types:
-			filename = glob.glob(this_type + '*')
-			
-			if '.gz' not in filename[0]:
-				complete = False
+			# find all files with this barcode (or barcode combination)
+			filenames = glob.glob(this_type + '*')
+			# then concatenate
+			command = ''
+			for name in filenames:
+				command = command + name + ' '
+				command = 'cat ' + command + ' > ' + this_type + '.fastq'
+				os.system(command)
+				print("Compressing with pigz...")
+				c_thread_n = '-p' + str(compression_threads)
+				if sbatch_compression: 
+					os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+				else:
+					os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
-		if complete:
-			finished = True
-			print("Compression complete!")
-		else:
-			time.sleep(1)
+				for name in filenames:
+					os.remove(name)
+
+			# check if compression is complete
+			finished = False
+			print("Compressing....")
+			while not finished:
+				# assume it's complete
+				complete = True
+				# now actually check 
+				for this_type in all_types:
+					filename = glob.glob(this_type + '*')
+					
+					if '.gz' not in filename[0]:
+						complete = False
+
+				if complete:
+					finished = True
+					print("Compression complete!")
+				else:
+					time.sleep(1)
+	else: # if not ultra_mode
+		for this_type in all_types:
+			# find all files with this barcode (or barcode combination)
+			filenames = glob.glob(this_type + '*')
+			# then concatenate
+			command = ''
+			for name in filenames:
+				command = command + name + ' '
+				command = 'cat ' + command + ' > ' + this_type + '.fastq.gz'
+				os.system(command)
 
 def clean_files(save_name):
 	files = glob.glob('mDe_' + save_name +'*')
 	for file in files:
 		os.remove(file)
-
 
 def process_bcs(csv, mismatch_5p, mismatch_3p):
 
@@ -685,6 +725,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 						help='prefix for output sequences [DEFAULT demux]')
 	optional.add_argument('-sb',"--sbatchcompression", action='store_true', default=False,
 						help='whether to compress output fastq using SLURM sbatch')
+	optional.add_argument('-u',"--ultra", action='store_true', default=False,
+					help='whether to use ultra mode, which is faster but makes very large temporary files')
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
 	print(args)
@@ -697,6 +739,10 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	adapter = args.adapter
 	save_name = args.outputprefix
 	sbatch_compression = args.sbatchcompression
+	ultra_mode = args.ultra
+
+	if ultra_mode:
+		print("Warning - ultra mode selected. This will generate very large temporary files!")
 
 	# process the barcodes csv 
 	five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p, mismatch_3p)
@@ -716,7 +762,8 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 		three_p_bcs, save_name, 
 		total_demultiplexed,
 		min_score_5_p, min_score_3_p, 
-		linked_bcs, three_p_trim_q)
+		linked_bcs, three_p_trim_q,
+		ultra_mode)
 
 	print("Demultiplexing...")
 	reader_process = ReaderProcess(file_name, all_conn_w,
