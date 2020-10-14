@@ -280,8 +280,8 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 		self._id = index # the worker id
 		self._read_pipe = read_pipe # the pipe the reader reads data from
 		self._need_work_queue = need_work_queue # worker adds its id to this queue when it needs work
-		self._start_qc = q5 # quality score to trim qc from 5' end
 		self._end_qc = q5 # quality score to trim qc from 3' end
+		self._start_qc = start_qc # quality score to trim qc from 5' end
 		self._total_demultiplexed = total_demultiplexed # a queue which keeps track of the total number of reads processed
 		self._adapter = adapter # the 3' adapter 
 		self._min_length = min_length # the minimum length of a read after quality and adapter trimming to include. Remember
