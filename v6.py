@@ -632,7 +632,7 @@ def concatenate_files(save_name, ultra_mode,
 
 
 	# First, file all the unique file names we have, ignoring threads
-	all_names = glob.glob("ultraplex_" + save_name +'*')
+	all_names = glob.glob(output_directory+"ultraplex_" + save_name +'*')
 
 	all_types = [] # ignoring threads
 	for name in all_names:
@@ -645,12 +645,12 @@ def concatenate_files(save_name, ultra_mode,
 	if ultra_mode:
 		for this_type in all_types:
 			# find all files with this barcode (or barcode combination)
-			filenames = glob.glob(output_directory + this_type + '*')
+			filenames = glob.glob(this_type + '*') # this type already has output directory
 			# then concatenate
 			command = ''
 			for name in filenames:
 				command = command + name + ' '
-			command = 'cat ' + command + ' > ' + output_directory + this_type + '.fastq'
+			command = 'cat ' + command + ' > ' + this_type + '.fastq'
 			os.system(command)
 
 			for name in filenames:
@@ -659,9 +659,9 @@ def concatenate_files(save_name, ultra_mode,
 			print("Compressing with pigz...")
 			c_thread_n = '-p' + str(compression_threads)
 			if sbatch_compression: 
-				os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+output_directory +this_type+'.fastq"')
+				os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
 			else:
-				os.system('pigz '+c_thread_n+' '+output_directory+this_type+'.fastq')
+				os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
 
 			# check if compression is complete
@@ -673,7 +673,7 @@ def concatenate_files(save_name, ultra_mode,
 					complete = True
 					# now actually check 
 					for this_type in all_types:
-						filename = glob.glob(output_directory + this_type + '*')
+						filename = glob.glob(this_type + '*')
 						
 						if '.gz' not in filename[0]:
 							complete = False
@@ -686,7 +686,7 @@ def concatenate_files(save_name, ultra_mode,
 	else: # if not ultra_mode
 		for this_type in all_types:
 			# find all files with this barcode (or barcode combination)
-			filenames = glob.glob(output_directory + this_type + '*')
+			filenames = glob.glob(this_type + '*')
 			# then concatenate
 			command = ''
 			for name in filenames:
@@ -697,8 +697,8 @@ def concatenate_files(save_name, ultra_mode,
 			for name in filenames:
 				os.remove(name)
 
-def clean_files(save_name):
-	files = glob.glob('ultraplex_' + save_name +'*')
+def clean_files(output_directory, save_name):
+	files = glob.glob(output_directory +'ultraplex_' + save_name +'*')
 	for file in files:
 		os.remove(file)
 
@@ -879,9 +879,16 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	output_directory = args.directory
 
+	if not output_directory=="":
+		if not output_directory[len(output_directory)-1]=="/":
+			output_directory = output_directory+"/"
+
+	# Make output directory
+	if not output_directory =="":
+		if not os.path.exists(output_directory):
+			os.mkdir(output_directory)
+
 	logging.basicConfig(level=logging.DEBUG,filename=output_directory+"ultraplex_" + str(start) +".log", filemode="a+",format="%(asctime)-15s %(levelname)-8s %(message)s")
-
-
 
 	print(args)
 	logging.info(args)
@@ -900,12 +907,10 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	min_length = args.min_length
 	q5 = args.phredquality_5_prime
 
-
-
 	if ultra_mode:
 		print("Warning - ultra mode selected. This will generate very large temporary files!")
 
-	assert output_directory=="" or output_directory[len(output_directory)-1]=="/", "Error! Directory must end with '/'"
+	#assert output_directory=="" or output_directory[len(output_directory)-1]=="/", "Error! Directory must end with '/'"
 
 	check_enough_space(output_directory,file_name,ignore_space_warning, ultra_mode)
 
@@ -917,7 +922,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 
 	# remove files from previous runs
-	clean_files(save_name)
+	clean_files(output_directory, save_name)
 
 	#/# Make a queue to which workers that need work will add
 	#/# a signal
