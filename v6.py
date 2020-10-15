@@ -664,25 +664,25 @@ def concatenate_files(save_name, ultra_mode,
 				os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
 
 
-			# check if compression is complete
-			if sbatch_compression:
-				finished = False
-				print("Compressing....")
-				while not finished:
-					# assume it's complete
-					complete = True
-					# now actually check 
-					for this_type in all_types:
-						filename = glob.glob(this_type + '*')
-						
-						if '.gz' not in filename[0]:
-							complete = False
+		# check if compression is complete
+		if sbatch_compression:
+			finished = False
+			print("Compressing....")
+			while not finished:
+				# assume it's complete
+				complete = True
+				# now actually check 
+				for this_type in all_types:
+					filename = glob.glob(this_type + '*')
+					
+					if '.gz' not in filename[0]:
+						complete = False
 
-					if complete:
-						finished = True
-						print("Compression complete!")
-					else:
-						time.sleep(1)
+				if complete:
+					finished = True
+					print("Compression complete!")
+				else:
+					time.sleep(1)
 	else: # if not ultra_mode
 		for this_type in all_types:
 			# find all files with this barcode (or barcode combination)
