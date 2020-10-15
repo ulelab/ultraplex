@@ -398,7 +398,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 					except:
 						linked = "_none_"
 
-					if linked == "_none_": # no 3' barcodes linked to this 3' barcode
+					if linked == "_none_": # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
 						comb_bc = '_5bc_' + five_p_bc
 
 						try:
@@ -629,8 +629,6 @@ def concatenate_files(save_name, ultra_mode,
 	different workers, then sends an sbatch command to compress
 	them all to fastqs.
 	"""
-
-
 	# First, file all the unique file names we have, ignoring threads
 	all_names = glob.glob(output_directory+"ultraplex_" + save_name +'*')
 
@@ -909,6 +907,12 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	if ultra_mode:
 		print("Warning - ultra mode selected. This will generate very large temporary files!")
+
+	if not ultra_mode:
+		if sbatch_compression:
+			print("sbatch_compression can only be used in conjunction with ultra mode")
+			print("setting sbatch_compression to false")
+			sbatch_compression = False
 
 	#assert output_directory=="" or output_directory[len(output_directory)-1]=="/", "Error! Directory must end with '/'"
 
