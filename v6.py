@@ -650,7 +650,7 @@ def concatenate_files(save_name, ultra_mode,
 			command = ''
 			for name in filenames:
 				command = command + name + ' '
-			command = 'cat ' + command + ' > ' + this_type + '.fastq'
+			command = 'cat ' + command + ' > ' + output_directory + this_type + '.fastq'
 			os.system(command)
 
 			for name in filenames:
@@ -659,9 +659,9 @@ def concatenate_files(save_name, ultra_mode,
 			print("Compressing with pigz...")
 			c_thread_n = '-p' + str(compression_threads)
 			if sbatch_compression: 
-				os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+this_type+'.fastq"')
+				os.system('sbatch -J compression --time 4:00:00 --wrap="pigz '+c_thread_n+' '+output_directory +this_type+'.fastq"')
 			else:
-				os.system('pigz '+c_thread_n+' '+this_type+'.fastq')
+				os.system('pigz '+c_thread_n+' '+output_directory+this_type+'.fastq')
 
 
 			# check if compression is complete
