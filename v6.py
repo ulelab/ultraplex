@@ -268,13 +268,19 @@ def three_p_demultiplex(read, d, length, add_umi, reverse_complement=False):
 
     assigned = d[bc]
 
+    if reverse_complement:
+        to_remove = read.sequence[0:len(assigned)]
+    else:
+        # then it's not paired end, so we don't care
+        to_remove = None
+
     umi = "" # initialise
 
     if not assigned == "no_match":
         sequence = sequence[0:(len(read) - length)]
         qualities = qualities[0:(len(read.qualities) - length)]
         # add to umi
-        umi_poses = [a == 'N' for a in assigned]
+        umi_poses = [a for a,b in enumerate(assigned) if b == 'N']
         umi = ''.join(bc[a] for a in umi_poses)
 
         if add_umi:
@@ -291,7 +297,7 @@ def three_p_demultiplex(read, d, length, add_umi, reverse_complement=False):
         read.sequence = sequence
         read.qualities = qualities
 
-    return read, assigned, umi
+    return read, assigned, umi, to_remove
 
 
 def make_dict_of_3p_bc_dicts(linked_bcs, min_score):
@@ -449,7 +455,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         read.name = read.name.replace(" ", "").replace("/", "").replace("\\",
                                                                                         "")  # remove bad characters
 
-                        read, five_p_bc, umi = five_p_demulti(read,
+                        read, five_p_bc, umi, to_remove = five_p_demulti(read,
                                                               self._five_p_barcodes_pos,
                                                               self._five_p_umi_poses,
                                                               self._five_p_bc_dict,
@@ -474,12 +480,11 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                 assigned_reads += 1
 
                         elif trimmed:  # if it is linked to 3' barcodes and has been trimmed
-                            read, three_p_bc, umi_3 = three_p_demultiplex(read,
+                            read, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read,
                                                                           self._three_p_bc_dict_of_dicts[five_p_bc],
                                                                           length=self._3p_length,
                                                                           add_umi=True)
 
-                            umi = umi_3
 
                             if not three_p_bc == "no_match":
                                 assigned_reads += 1
@@ -489,6 +494,13 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                             comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
 
+                            try:
+                                this_buffer_dict[comb_bc].append(read)
+                            except:
+                                this_buffer_dict[comb_bc] = [read]
+
+                        else: # linked to 3' barcode but wasn't trimmed so can't assign
+                            comb_bc = '_5bc_' + five_p_bc + '_3bc_' + 'no_match'
                             try:
                                 this_buffer_dict[comb_bc].append(read)
                             except:
@@ -571,11 +583,11 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                           "")  # remove bad characters
 
                         # demultiplex based on 5' end
-                        read1, five_p_bc, umi = five_p_demulti(read1,
-                                                               self._five_p_barcodes_pos,
-                                                               self._five_p_umi_poses,
-                                                               self._five_p_bc_dict,
-                                                               add_umi=False)
+                        read1, five_p_bc, umi, to_remove_5 = five_p_demulti(read1,
+                                                              self._five_p_barcodes_pos,
+                                                              self._five_p_umi_poses,
+                                                              self._five_p_bc_dict,
+                                                              add_umi=False)
 
                         # add the 5' umi to each
                         for read in [read1, read2]:
@@ -594,6 +606,12 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
                             comb_bc = '_5bc_' + five_p_bc
 
+                            # remove the 5' barcoded adapter from reverse read
+                            read2 = remove_mate_adapter(read = read2,
+                                                        to_remove = to_remove_5,
+                                                        bcd = five_p_bc,
+                                                        trimmed = trimmed2)
+
                             try:
                                 this_buffer_dict_1[comb_bc].append(read1)
                                 this_buffer_dict_2[comb_bc].append(read2)
@@ -605,7 +623,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                 assigned_reads += 1
 
                         else:  # if there's a linked 3' barcode, no need to check if trimmed b/c P.E.
-                            read2, three_p_bc, umi_3 = three_p_demultiplex(read2,
+                            read2, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read2,
                                                                            self._three_p_bc_dict_of_dicts[five_p_bc],
                                                                            length=self._3p_length,
                                                                            add_umi=False,
@@ -617,6 +635,19 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                     read.name = read.name + "rbc:" + umi_3
                                 else:  # if rbc is already there
                                     read.name = read.name + umi_3
+
+                            # remove the 5' bcded adapter from the reverse read
+                            read2 = remove_mate_adapter(read = read2,
+                                                        to_remove = to_remove_5,
+                                                        bcd = five_p_bc,
+                                                        trimmed = trimmed2)
+                            # remove the 3' adapter from the forward read
+                            read1 = remove_mate_adapter(read = read1,
+                                                        to_remove = to_remove_3,
+                                                        bcd = three_p_bc,
+                                                        trimmed= trimmed1)
+
+
 
                             if not three_p_bc == "no_match":
                                 assigned_reads += 1
@@ -684,6 +715,31 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
             prev_total = self._total_reads_5p_no_3p.get()
             new_total = prev_total + five_no_three_reads
             self._total_reads_5p_no_3p.put(new_total)
+
+def remove_mate_adapter(read, to_remove, bcd, trimmed):
+    """
+    This function looks for the barcoded adapter (UMI-specific, not just Ns) in the mate read. It then checks
+    that not too much was removed
+    The idea is that if the forward read is B1B2B3B4B5AAAGGG..., where B is the barcode, then:
+    to_remove = B1B2B3B4B5
+    reverse read = CCCTTTb5b4b3b2b1iiiiii where i is the illumina adapter for the reverse read
+    the reverse read then gets trimmed to CCCTTTb5b4b3b2b1
+    So now we just look for bbbbb, which is the reverse complement of what was removed
+    """
+
+
+    if trimmed: # then remove
+        read = read[0:len(read.sequence)-len(bcd)]
+    else:
+        remove_rc = rev_c(to_remove) # this is now "b5b4b3b2b1"
+        for i in range(0, len(bcd)):
+            j = len(bcd) - i
+            # take the last jth seqs and see if they match
+            end_of_read = read.sequence[-j:]
+            if end_of_read == remove_rc[0:j]: # then this is probably the barcode so trim
+                read.sequence = read.sequence[0:len(read.sequence)-j]
+
+    return read
 
 
 def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
@@ -764,6 +820,9 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
     else:  # if not
         to_add = "rbc:"
 
+    # store what sequence will be removed
+    to_remove = read.sequence[0:len(winner)]
+
     this_five_p_umi = ""
     if not winner == "no_match":
         # /# find umi sequence
@@ -779,7 +838,7 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
     else:
         read.name = read.name + to_add
 
-    return read, winner, this_five_p_umi
+    return read, winner, this_five_p_umi, to_remove
 
 
 def find_bc_and_umi_pos(barcodes):
@@ -843,9 +902,9 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                linked_bcs,
                                three_p_trim_q,
                                min_length,
-                               q5,
-                               i2,
-                               adapter2)
+                               q5 = q5,
+                               i2 = i2,
+                               adapter2=adapter2)
 
         worker.start()
         workers.append(worker)
@@ -1159,6 +1218,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     q5 = args.phredquality_5_prime
     i2 = args.input_2
 
+
     if i2 == "":
         i2 = False
 
@@ -1206,9 +1266,9 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     ultra_mode,
                                                     output_directory,
                                                     min_length,
-                                                    q5,
-                                                    i2,
-                                                    adapter2)
+                                                    q5 = q5,
+                                                    i2 = i2,
+                                                    adapter2 = adapter2)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
