@@ -107,7 +107,7 @@ class ReaderProcess(Process):
 	and finally sends the stop token -1 ("poison pills") to all connections.
 	"""
 
-	def __init__(self, file, connections, queue, buffer_size):
+	def __init__(self, file, connections, queue, buffer_size, i2):
 		# /# Setup the reader process
 
 		"""
@@ -120,18 +120,23 @@ class ReaderProcess(Process):
 		self.connections = connections
 		self.queue = queue
 		self.buffer_size = buffer_size
-		#self.stdin_fd = stdin_fd
+		self.file2 = i2
 
 	def run(self):
 		# if self.stdin_fd != -1:
 		# 	sys.stdin.close()
 		# 	sys.stdin = os.fdopen(self.stdin_fd) #/# not sure why I need this!
 
-		try:
-			with xopen(self.file, 'rb') as f:
-				#/# every chunk in the fastq gets a unique chunk_index
-				for chunk_index, chunk in enumerate(dnaio.read_chunks(f, self.buffer_size)):
-					self.send_to_worker(chunk_index, chunk)
+        try:
+            with xopen(self.file, 'rb') as f:
+                if self.file2:
+                    with xopen(self.file2, 'rb') as f2:
+                        for chunk_index, (chunk1, chunk2) in enumerate(
+                                dnaio.read_paired_chunks(f, f2, self.buffer_size)):
+                            self.send_to_worker(chunk_index, chunk1, chunk2)
+                else:
+                    for chunk_index, chunk in enumerate(dnaio.read_chunks(f, self.buffer_size)):
+                        self.send_to_worker(chunk_index, chunk)
 
 
 			# Send poison pills to all workers
@@ -144,11 +149,13 @@ class ReaderProcess(Process):
 				connection.send(-2)
 				connection.send((e, traceback.format_exc()))
 
-	def send_to_worker(self, chunk_index, chunk):
+	def send_to_worker(self, chunk_index, chunk, chunk2 = None):
 		worker_index = self.queue.get()  # get a worker that needs work
 		connection = self.connections[worker_index]  # find the connection to this worker
 		connection.send(chunk_index)  # send the index of this chunk to the worker
 		connection.send_bytes(chunk)  # /# send the actual data to this worker
+		if chunk2 is not None:
+			connection.send_bytes(chunk2)
 
 class InputFiles:
 	"""
@@ -223,29 +230,59 @@ def make_all_seqs(l):
 
 	return(all_seqs)
 
+def rev_c(seq):
+	# simple function that reverse complements a given sequence
+	
+	# first reverse the sequence
+	seq = seq[::-1]
+	# and then complement
+	d = {"A":"T", "C":"G", "G":"C", "T":"A", "N":"N"}
+	seq2 = ""
+	for element in seq:
+		seq2 = seq2 + d[element]
 
-def three_p_demultiplex(read, d, length):
+	return seq2
+
+def three_p_demultiplex(read, d, length, add_umi, reverse_complement=False):
 	"""
 	read is a dnaio read
 	d is the relevant match dictionary
 	length is the length of the 3' barcodes (it assumes they're all the same)
 	"""
-	bc = read.sequence[-length:]
+
+	if reverse_complement:
+		sequence = rev_c(read.sequence)
+		qualities = read.qualities[::-1] # just reverse - can't complement qualities!
+	else:
+		sequence = read.sequence
+		qualities = read.qualities
+
+	bc = sequence[-length:]
 
 	assigned = d[bc]
 
 	if not assigned == "no_match":
-		read.sequence = read.sequence[0:(len(read)-length)]
-		read.qualities = read.qualities[0:(len(read.qualities)-length)]
+		sequence = sequence[0:(len(read)-length)]
+		qualities = qualities[0:(len(read.qualities)-length)]
 		# add to umi
 		umi_poses = [a == 'N' for a in assigned]
 		umi = ''.join(bc[a] for a in umi_poses)
-		if "rbc:" in read.name: 
-			read.name = read.name + umi
-		else:
-			read.name = read.name + "rbc:" + umi
+		
+		if add_umi:
+			if "rbc:" in read.name: 
+				read.name = read.name + umi
+			else:
+				read.name = read.name + "rbc:" + umi
 
-	return read, assigned
+	if reverse_complement:
+		# spin back round
+		read.sequence = rev_c(sequence)
+		read.qualities = qualities[::-1]
+	else:
+		read.sequence = sequence
+		read.qualities = qualities
+
+	return read, assigned, umi
 
 
 def make_dict_of_3p_bc_dicts(linked_bcs, min_score):
@@ -272,6 +309,8 @@ def make_dict_of_3p_bc_dicts(linked_bcs, min_score):
 	assert len(lengths) <= 1, "Your barcodes are different lengths, this is not allowed."
 	return d, three_p_length
 
+
+
 class WorkerProcess(Process): #/# have to have "Process" here to enable worker.start()
 	"""
 	The worker repeatedly reads chunks of data from the read_pipe, runs the pipeline on it
@@ -292,13 +331,15 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 				 linked_bcs,
 				 three_p_trim_q,
 				 min_length,
-				 q5):
+				 q5,
+				 i2,
+				 adapter2):
 		super().__init__()
 		self._id = index # the worker id
 		self._read_pipe = read_pipe # the pipe the reader reads data from
 		self._need_work_queue = need_work_queue # worker adds its id to this queue when it needs work
-		self._end_qc = q5 # quality score to trim qc from 3' end
-		self._start_qc = three_p_trim_q # quality score to trim qc from 5' end
+		self._end_qc = three_p_trim_q # quality score to trim qc from 3' end
+		self._start_qc = q5 # quality score to trim qc from 5' end
 		self._total_demultiplexed = total_demultiplexed # a queue which keeps track of the total number of reads processed
 		self._total_reads_assigned = total_reads_assigned # a queue which keeps track of the total number of reads assigned to sample files
 		self._total_reads_qtrimmed = total_reads_qtrimmed # a queue which keeps track of the total number of reads quality trimmed
@@ -319,172 +360,282 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 					# a dict of which 3' barcode matches the given sequence, which is also a dict
 		self._ultra_mode = ultra_mode
 		self._output_directory = output_directory
+		self._i2 = i2 # paired end file name, or false
+		self._adapter2 = adapter2
+
+	def trim_and_cut(read, quality_3, quality_5, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
+		#/# first, trim by quality score
+		q_start, q_stop = quality_trim_index(read.qualities, self._start_qc, self._end_qc)
+		prev_length = len(read.sequence)
+		read = read[q_start:q_stop]
+		if not len(read.sequence) == prev_length:
+			# then it was trimmed
+			trimmed = True
+			reads_quality_trimmed += 1
+		else:
+			trimmed = False
+
+		#/# then, trim adapter
+		prev_length = len(read.sequence)
+		read = cutter(read, ModificationInfo(read))
+		if not len(read.sequence) == prev_length:
+			# then it was trimmed
+			trimmed = True
+			reads_adaptor_trimmed += 1
+		else:
+			trimmed = False
+
+		return read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed
+
 
 	def run(self):
-		#try:
-		# stats = Statistics()
+		
 		while True:  # /# once spawned, this keeps running forever, until poison pill recieved
-			# Notify reader that we need data
-			self._need_work_queue.put(self._id)
+			if i2 is False: # then it's single end
+				# Notify reader that we need data
+				self._need_work_queue.put(self._id)
 
-			#/# get some data
-			chunk_index = self._read_pipe.recv()
+				#/# get some data
+				chunk_index = self._read_pipe.recv()
 
-			# /# check there's no error
-			if chunk_index == -1:  # /# poison pill from Sina
-				# reader is done
-				break
-			elif chunk_index == -2:
-				# An exception has occurred in the reader
-				e, tb_str = self._read_pipe.recv()
-				raise e
+				# /# check there's no error
+				if chunk_index == -1:  # /# poison pill from Sina
+					# reader is done
+					break
+				elif chunk_index == -2:
+					# An exception has occurred in the reader
+					e, tb_str = self._read_pipe.recv()
+					raise e
 
-			# /# otherwise if we have no error, run...
-			#/# get some bytes
-			data = self._read_pipe.recv_bytes()
-			infiles = io.BytesIO(data)
-			
-			# Define the cutter
-			adapter = [BackAdapter(self._adapter, max_error_rate=0.1)]
-			cutter = AdapterCutter(adapter, times=3)
+				# /# otherwise if we have no error, run...
+				#/# get some bytes
+				data = self._read_pipe.recv_bytes()
+				infiles = io.BytesIO(data)
+				
+				# Define the cutter
+				adapter = [BackAdapter(self._adapter, max_error_rate=0.1)]
+				cutter = AdapterCutter(adapter, times=3)
 
-			#/# process the reads
-			processed_reads = []
-			five_p_bcs = []
-			this_buffer_dict = {}
-			reads_written = 0
-			assigned_reads = 0
-			reads_quality_trimmed = 0
-			reads_adaptor_trimmed = 0
-			five_no_three_reads = 0
+				#/# process the reads
+				processed_reads = []
+				this_buffer_dict = {}
+				reads_written = 0
+				assigned_reads = 0
+				reads_quality_trimmed = 0
+				reads_adaptor_trimmed = 0
+				five_no_three_reads = 0
 
-			for read in InputFiles(infiles).open():
-				reads_written += 1
-				#/# first, trim by quality score
-				q_start, q_stop = quality_trim_index(read.qualities, self._start_qc, self._end_qc)
-				prev_length = len(read.sequence)
-				read = read[q_start:q_stop]
-				if not len(read.sequence) == prev_length:
-					# then it was trimmed
-					trimmed = True
-					reads_quality_trimmed += 1
-				else:
-					trimmed = False
+				for read in InputFiles(infiles).open():
+					reads_written += 1
+					umi = ""
 
-				#/# then, trim adapter
-				prev_length = len(read.sequence)
-				read = cutter(read, ModificationInfo(read))
-				if not len(read.sequence) == prev_length:
-					# then it was trimmed
-					trimmed = True
-					reads_adaptor_trimmed += 1
-				else:
-					trimmed = False
-
-				if len(read.sequence) > self._min_length:
-					#/# demultiplex at the 5' end ###
-					read.name = read.name.replace(" ", "").replace("/", "").replace("\\", "") # remove bad characters
-
-					read, five_p_bc = five_p_demulti(read, five_p_bcs, 
-						self._five_p_barcodes_pos,
-						self._five_p_umi_poses,
-						self._five_p_bc_dict)
+					read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed = self.trim_and_cut(read, 
+						self._end_qc, self._start_qc, cutter, 
+						reads_quality_trimmed, reads_adaptor_trimmed)
 
 
-					#/# demultiplex at the 3' end
-					# First, check if this 5' barcode has any 3' barcodes
-					try:
-						linked = self._linked_bcs[five_p_bc]
-					except:
-						linked = "_none_"
+					if len(read.sequence) > self._min_length:
+						#/# demultiplex at the 5' end ###
+						read.name = read.name.replace(" ", "").replace("/", "").replace("\\", "") # remove bad characters
 
-					if linked == "_none_": # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
-						comb_bc = '_5bc_' + five_p_bc
+						read, five_p_bc, umi = five_p_demulti(read, 
+							self._five_p_barcodes_pos,
+							self._five_p_umi_poses,
+							self._five_p_bc_dict,
+							add_umi = True)
 
+
+						#/# demultiplex at the 3' end
+						# First, check if this 5' barcode has any 3' barcodes
 						try:
-							this_buffer_dict[comb_bc].append(read)
+							linked = self._linked_bcs[five_p_bc]
 						except:
-							this_buffer_dict[comb_bc] = [read]
+							linked = "_none_"
 
-						if not five_p_bc == "no_match":
-							assigned_reads+=1
+						if linked == "_none_": # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
+							comb_bc = '_5bc_' + five_p_bc
 
-					elif trimmed: # if it is linked to 3' barcodes and has been trimmed
-						read, three_p_bc = three_p_demultiplex(read, 
-							self._three_p_bc_dict_of_dicts[five_p_bc], 
-							length = self._3p_length)
+							try:
+								this_buffer_dict[comb_bc].append(read)
+							except:
+								this_buffer_dict[comb_bc] = [read]
 
-						if not three_p_bc == "no_match":
-							assigned_reads += 1
+							if not five_p_bc == "no_match":
+								assigned_reads+=1
 
-						if three_p_bc == "no_match":
-							five_no_three_reads += 1
+						elif trimmed: # if it is linked to 3' barcodes and has been trimmed
+							read, three_p_bc, umi_3 = three_p_demultiplex(read, 
+								self._three_p_bc_dict_of_dicts[five_p_bc], 
+								length = self._3p_length,
+								add_umi = True)
 
-						comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
+							umi = umi_3
 
+							if not three_p_bc == "no_match":
+								assigned_reads += 1
+
+							if three_p_bc == "no_match":
+								five_no_three_reads += 1
+
+							comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
+
+							try:
+								this_buffer_dict[comb_bc].append(read)
+							except:
+								this_buffer_dict[comb_bc] = [read]
+
+				## Write out! ##
+				for demulti_type, reads in this_buffer_dict.items():
+					write_tmp_files(output_dir = self._output_directory, 
+						save_name = self._save_name,
+						demulti_type = demulti_type,
+						worker_id = self._id,
+						reads = reads,
+						ultra_mode = self._ultra_mode)
+
+			else: # if paired end
+				# Notify reader that we need data
+				self._need_work_queue.put(self._id)
+
+				#/# get some data
+				chunk_index = self._read_pipe.recv()
+
+				# /# check there's no error
+				if chunk_index == -1:  # /# poison pill from Sina
+					# reader is done
+					break
+				elif chunk_index == -2:
+					# An exception has occurred in the reader
+					e, tb_str = self._read_pipe.recv()
+					raise e
+
+				# /# otherwise if we have no error, run...
+				#/# get some bytes
+				data1 = self._read_pipe.recv_bytes()
+				infiles_1 = io.BytesIO(data_1)
+				data2 = self._read_pipe.recv_bytes()
+				infiles_2 = io.BytesIO(data_2)
+				
+				# Define the cutter
+				adapter1 = [BackAdapter(self._adapter1, max_error_rate=0.1)]
+				adapter2 = [BackAdapter(self._adapter2, max_error_rate=0.1)]
+				cutter1 = AdapterCutter(adapter1, times=3)
+				cutter2 = AdapterCutter(adapter2, times=3)
+
+				#/# process the reads
+				processed_reads = []
+				this_buffer_dict_1 = {}
+				this_buffer_dict_2 = {}
+				reads_written = 0
+				assigned_reads = 0
+				reads_quality_trimmed = 0
+				reads_adaptor_trimmed = 0
+				five_no_three_reads = 0
+
+				for read1, read2 in zip(InputFiles(infiles_1).open(), InputFiles(infiles_2).open()):
+					# First, check that they have the same name
+					assert read1.name == read2.name, "Paired reads are mismatched"
+
+					umi = ""
+					reads_written += 1
+					#/# first, trim by quality score
+					read1, trimmed1, reads_quality_trimmed, reads_adaptor_trimmed = self.trim_and_cut(read1, 
+						self._end_qc, self._start_qc, cutter1, 
+						reads_quality_trimmed, reads_adaptor_trimmed)
+
+					read2, trimmed2, ignore, ignore_also = self.trim_and_cut(read2, 
+						self._end_qc, self._start_qc, cutter2, 
+						reads_quality_trimmed, reads_adaptor_trimmed)
+
+					if len(read1.sequence) > self._min_length and len(read2.sequence) > self._min_length:
+						#/# demultiplex at the 5' end ###
+						read1.name = read1.name.replace(" ", "").replace("/", "").replace("\\", "") # remove bad characters
+						read2.name = read2.name.replace(" ", "").replace("/", "").replace("\\", "") # remove bad characters
+
+						# demultiplex based on 5' end
+						read1, five_p_bc, umi = five_p_demulti(read1,
+							self._five_p_barcodes_pos,
+							self._five_p_umi_poses,
+							self._five_p_bc_dict,
+							add_umi = False)
+
+						# add the 5' umi to each
+						for read in [read1, read2]:
+							if not "rbc:" in read.name:
+								read.name = read.name + "rbc:" + umi
+							else: # if rbc is already there
+								read.name = read.name + umi
+
+						#/# demultiplex at the 3' end
+						# First, check if this 5' barcode has any 3' barcodes
 						try:
-							this_buffer_dict[comb_bc].append(read)
+							linked = self._linked_bcs[five_p_bc]
 						except:
-							this_buffer_dict[comb_bc] = [read]
+							linked = "_none_"
 
-			## Write out! ##
-			for demulti_type, reads in this_buffer_dict.items():
-				if self._ultra_mode:
-					#/# work out this filename
-					filename = self._output_directory + 'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq'
+						if linked == "_none_": # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
+							comb_bc = '_5bc_' + five_p_bc
 
-					if os.path.exists(filename):
-						append_write = 'a' # append if already exists
-					else:
-						append_write = 'w' # make a new file if not
+							try:
+								this_buffer_dict_1[comb_bc].append(read1)
+								this_buffer_dict_2[comb_bc].append(read2)
+							except:
+								this_buffer_dict_1[comb_bc] = [read1]
+								this_buffer_dict_2[comb_bc] = [read2]
 
-					with open(filename, append_write) as file:
-						this_out = []
-						for counter, read in enumerate(reads):
-							
-							# Quality control:
-							assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-							
-							if counter == 0:
-								umi_l = len(read.name.split("rbc:")[1])
-							assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
-							## combine into a single list
-							this_out.append("@" + read.name)
-							this_out.append(read.sequence)
-							this_out.append("+")
-							this_out.append(read.qualities)
+							if not five_p_bc == "no_match":
+								assigned_reads+=1
 
-						output = '\n'.join(this_out) + '\n'
-						#print(output)
-						file.write(output)
-				else:
-					#/# work out this filename
-					filename = self._output_directory+'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(self._id)+'.fastq.gz'
+						else: # if there's a linked 3' barcode, no need to check if trimmed b/c P.E.
+							read2, three_p_bc, umi_3 = three_p_demultiplex(read2, 
+								self._three_p_bc_dict_of_dicts[five_p_bc], 
+								length = self._3p_length, 
+								add_umi = False,
+								reverse_complement = True)
 
-					if os.path.exists(filename):
-						append_write = 'ab' # append if already exists
-					else:
-						append_write = 'wb' # make a new file if not
+							# add the second umi
+							for read in [read1, read2]:
+								if not "rbc:" in read.name:
+									read.name = read.name + "rbc:" + umi_3
+								else: # if rbc is already there
+									read.name = read.name + umi_3
 
-					with gzip.open(filename, append_write) as file:
-						this_out = []
-						for counter, read in enumerate(reads):
-							
-							# Quality control:
-							assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-							
-							if counter == 0:
-								umi_l = len(read.name.split("rbc:")[1])
-							assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
-							## combine into a single list
-							this_out.append("@" + read.name)
-							this_out.append(read.sequence)
-							this_out.append("+")
-							this_out.append(read.qualities)
+							if not three_p_bc == "no_match":
+								assigned_reads += 1
 
-						output = '\n'.join(this_out) + '\n'
-						#print(output)
-						file.write(output.encode())
+							if three_p_bc == "no_match":
+								five_no_three_reads += 1
+
+							comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
+
+							try:
+								this_buffer_dict_1[comb_bc].append(read1)
+								this_buffer_dict_2[comb_bc].append(read2)
+							except:
+								this_buffer_dict_1[comb_bc] = [read1]
+								this_buffer_dict_2[comb_bc] = [read2]
+
+				## Write out! ##
+
+				for demulti_type, reads in this_buffer_dict1.items():
+					demulti_type = demulti_type + "_Fwd_"
+					write_tmp_files(output_dir = self._output_directory, 
+						save_name = self._save_name,
+						demulti_type = demulti_type,
+						worker_id = self._id,
+						reads = reads,
+						ultra_mode = self._ultra_mode)
+				
+				for demulti_type, reads in this_buffer_dict2.items():
+					demulti_type = demulti_type + "_Rev_"
+					write_tmp_files(output_dir = self._output_directory, 
+						save_name = self._save_name,
+						demulti_type = demulti_type,
+						worker_id = self._id,
+						reads = reads,
+						ultra_mode = self._ultra_mode)
+
+
 
 			# LOG reads processed
 			prev_total = self._total_demultiplexed.get()
@@ -518,9 +669,68 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 			new_total = prev_total + five_no_three_reads
 			self._total_reads_5p_no_3p.put(new_total)
 
+def write_tmp_files(output_dir, save_name, demulti_type, worker_id, this_buffer_dict, reads,
+	ultra_mode):
 
-def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
-	five_p_bc_dict):
+	if ultra_mode:
+		#/# work out this filename
+		filename = self._output_directory + 'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(worker_id)+'.fastq'
+
+		if os.path.exists(filename):
+			append_write = 'a' # append if already exists
+		else:
+			append_write = 'w' # make a new file if not
+
+		with open(filename, append_write) as file:
+			this_out = []
+			for counter, read in enumerate(reads):
+				
+				# Quality control:
+				assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
+				
+				if counter == 0:
+					umi_l = len(read.name.split("rbc:")[1])
+				assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+				## combine into a single list
+				this_out.append("@" + read.name)
+				this_out.append(read.sequence)
+				this_out.append("+")
+				this_out.append(read.qualities)
+
+			output = '\n'.join(this_out) + '\n'
+			#print(output)
+			file.write(output)
+	else:
+		#/# work out this filename
+		filename = self._output_directory+'ultraplex_'+self._save_name+demulti_type+'_tmp_thread_'+str(worker_id)+'.fastq.gz'
+
+		if os.path.exists(filename):
+			append_write = 'ab' # append if already exists
+		else:
+			append_write = 'wb' # make a new file if not
+
+		with gzip.open(filename, append_write) as file:
+			this_out = []
+			for counter, read in enumerate(reads):
+				
+				# Quality control:
+				assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
+				
+				if counter == 0:
+					umi_l = len(read.name.split("rbc:")[1])
+				assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+				## combine into a single list
+				this_out.append("@" + read.name)
+				this_out.append(read.sequence)
+				this_out.append("+")
+				this_out.append(read.qualities)
+
+			output = '\n'.join(this_out) + '\n'
+			#print(output)
+			file.write(output.encode())
+
+def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
+	five_p_bc_dict, add_umi):
 	"""
 	this function demultiplexes on the 5' end
 	"""
@@ -535,6 +745,7 @@ def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
 	else: # if not
 		to_add = "rbc:"
 
+	this_five_p_umi = ""
 	if not winner == "no_match":
 		#/# find umi sequence
 		this_five_p_umi = ''.join([read.sequence[i] for i in five_p_umi_poses[winner]])
@@ -543,14 +754,15 @@ def five_p_demulti(read, five_p_bcs, five_p_bc_pos, five_p_umi_poses,
 		read.sequence = read.sequence[len(winner):]
 		read.qualities= read.qualities[len(winner):]
 
-		# to read header add umi and 5' barcode info
-		read.name = (read.name.replace(" ", "")+to_add + this_five_p_umi)
+		if add_umi:
+			# to read header add umi and 5' barcode info
+			read.name = (read.name.replace(" ", "")+to_add + this_five_p_umi)
 	else:
 		read.name = read.name + to_add
 	
 
 
-	return read, winner
+	return read, winner, this_five_p_umi
 
 def find_bc_and_umi_pos(barcodes):
 	"""
@@ -573,7 +785,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 	five_p_bcs, three_p_bcs,  save_name, total_demultiplexed, total_reads_assigned, 
 	total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
 	min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
-	ultra_mode, output_directory, min_length, q5):
+	ultra_mode, output_directory, min_length, q5,i2, adapter2):
 	"""
 	This function starts all the workers
 	"""
@@ -613,7 +825,9 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 			linked_bcs,
 			three_p_trim_q,
 			min_length,
-			q5)
+			q5,
+			i2, 
+			adapter2)
 
 		worker.start()
 		workers.append(worker)
@@ -777,7 +991,7 @@ def print_header():
 
 
 def check_enough_space(output_directory, input_file,
-	ignore_space_warning, ultra_mode):
+	ignore_space_warning, ultra_mode, i2):
 	# First, find the free space on the output directory
 	if output_directory == "":
 		output_directory = os.getcwd()
@@ -787,6 +1001,9 @@ def check_enough_space(output_directory, input_file,
 		multiplier = 0.098
 	else:
 		multiplier = 0.98
+
+	if not i2 == False:
+		multiplier = multiplier/2
 	# Find the size of the input file
 	input_file_size = Path(input_file).stat().st_size
 	if ignore_space_warning:
@@ -871,6 +1088,12 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	# start qc
 	optional.add_argument("-q5", '--phredquality_5_prime', type=int, default=0,
 		nargs='?', help="quality trimming minimum score from 5' end - use with caution!")
+	# paired end file
+	optional.add_argument("-i2", "--input_2", type="str", default="", nargs="?",
+		help = "Optional second fastq.gz input for paired end data")
+	# adaptor for paired end read
+	optional.add_argument("-a2", "--adapter2", type=str, default = "AGATCGGAAGAGCGTCGTG",
+		nargs="?", help="sequencing adaptor to trim for the reverse read [Default AGATCGGAAGAGCGTCGTG]")
 	
 	parser._action_groups.append(optional)
 	args = parser.parse_args()
@@ -898,12 +1121,17 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 	three_p_trim_q = args.phredquality
 	threads = args.threads
 	adapter = args.adapter
+	adatper2 = args.adapter2
 	save_name = args.outputprefix
 	sbatch_compression = args.sbatchcompression
 	ultra_mode = args.ultra
 	ignore_space_warning = args.ignore_space_warning
 	min_length = args.min_length
 	q5 = args.phredquality_5_prime
+	i2 = args.input_2
+
+	if i2 == "":
+		i2 = False
 
 	if ultra_mode:
 		print("Warning - ultra mode selected. This will generate very large temporary files!")
@@ -916,7 +1144,7 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 
 	#assert output_directory=="" or output_directory[len(output_directory)-1]=="/", "Error! Directory must end with '/'"
 
-	check_enough_space(output_directory,file_name,ignore_space_warning, ultra_mode)
+	check_enough_space(output_directory,file_name,ignore_space_warning, ultra_mode, i2)
 
 	# process the barcodes csv 
 	five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p, mismatch_3p)
@@ -949,11 +1177,13 @@ def main(buffer_size = int(4*1024**2)): # 4 MB
 		ultra_mode,
 		output_directory,
 		min_length,
-		q5)
+		q5,
+		i2,
+		adapter2)
 
 	print("Demultiplexing...")
 	reader_process = ReaderProcess(file_name, all_conn_w,
-			need_work_queue, buffer_size)
+			need_work_queue, buffer_size, i2)
 	reader_process.daemon = True
 	reader_process.run()
 
