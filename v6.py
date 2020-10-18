@@ -174,43 +174,30 @@ def make_3p_bc_dict(bcs, min_score):
 	Generates a dictionary that matches a given sequence with
 	its best 3' barcode match, or "no_match"
 	"""
-    # First, find length of all barcodes
-    len_d = {}
-    for bc in bcs:
-        try:
-            len_d[len(bc)] += 1
-        except:
-            len_d[len(bc)] = 1
+    # First, find positions of barcode bases (not UMIs) relative to 3' end of read
 
-    if not len(len_d) == 1:
-        print("Error, 3' barcodes are not all the same length")
-        return -1
-    else:  # ie if theres only one length
-        bcl = len(bcs[0])  # barcode length
+    bcl = len([a for a,b in enumerate(bcs[0]) if b != "N"]) # number of non-N characters in barcode
+    all_seqs = make_all_seqs(bcl)
+    three_p_match_d = {}
+    for seq in all_seqs:
+        # assume no match
+        three_p_match_d[seq] = "no_match"
+        # now check if there actually is a match
+        correct_bcs = []
 
-        all_seqs = make_all_seqs(bcl)
+        for bc in bcs:
 
-        three_p_match_d = {}
+            # remove Ns
+            bc_no_N = bc.replace("N", "")
 
-        for seq in all_seqs:
-            # assume no match
-            three_p_match_d[seq] = "no_match"
+            score = sum(a == b for a, b in zip(bc_no_N, seq))
 
-            # now check if there actually is a match
-            correct_bcs = []
-            for bc in bcs:
-                # Find positions on non-N characters in bc
-                nN = [pos for pos, char in enumerate(bc) if char != 'N']
+            if score >= min_score:
+                correct_bcs.append(bc)
 
-                score = sum(a == b for a, b in zip(bc, seq))
-                score += -sum(a == 'N' for a in seq)  # penalise N
 
-                if score >= min_score:
-                    correct_bcs.append(bc)
-
-            if len(correct_bcs) == 1:
-                three_p_match_d[seq] = correct_bcs[0]
-
+        if len(correct_bcs) == 1:
+            three_p_match_d[seq] = correct_bcs[0]
     return three_p_match_d
 
 
@@ -244,25 +231,33 @@ def rev_c(seq):
     return seq
 
 
-def three_p_demultiplex(read, d, length, add_umi, reverse_complement=False):
+def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False):
     """
 	read is a dnaio read
 	d is the relevant match dictionary
 	length is the length of the 3' barcodes (it assumes they're all the same)
 	"""
 
-    if reverse_complement:
+    if reverse_complement: # if it's paired end reverse complement the reverse read
         sequence = rev_c(read.sequence)
         qualities = read.qualities[::-1]  # just reverse - can't complement qualities!
     else:
         sequence = read.sequence
         qualities = read.qualities
 
-    bc = sequence[-length:]
+    # find the positions of the non-N characters relative to 3' end
+    # TODO precalculate these for faster operation - make a dict of positions for each 5' bacordes linked 3' barcodes
+    bc_length = len(linked_bcds[0])
+    non_N_poses = [a-bc_length for a, b in enumerate(linked_bcds[0]) if b != "N"] # all negative
+
+    seq_length = len(sequence)
+    positions_to_extract = [x+seq_length for x in non_N_poses]
+
+    bc = ''.join(sequence[a] for a in positions_to_extract)
 
     assigned = d[bc]
 
-    if reverse_complement:
+    if reverse_complement: # the sequence that will be removed
         to_remove = read.sequence[0:len(assigned)]
     else:
         # then it's not paired end, so we don't care
@@ -271,11 +266,14 @@ def three_p_demultiplex(read, d, length, add_umi, reverse_complement=False):
     umi = ""  # initialise
 
     if not assigned == "no_match":
+
+        # add to umi
+        umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
+        umi_positions_to_extract = [x + seq_length for x in umi_poses]
+        umi = ''.join(sequence[a] for a in umi_positions_to_extract)
+        length = len(assigned)
         sequence = sequence[0:(len(read) - length)]
         qualities = qualities[0:(len(read.qualities) - length)]
-        # add to umi
-        umi_poses = [a for a, b in enumerate(assigned) if b == 'N']
-        umi = ''.join(bc[a] for a in umi_poses)
 
         if add_umi:
             if "rbc:" in read.name:
@@ -293,30 +291,23 @@ def three_p_demultiplex(read, d, length, add_umi, reverse_complement=False):
 
     return read, assigned, umi, to_remove
 
-
-def make_dict_of_3p_bc_dicts(linked_bcs, min_score):
+# TODO link three_p_mismatches to input
+def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches = 0):
     """
 	this function makes a different dictionary for each 5' barcode
 	it also checks that they're all the same length
 	"""
     d = {}
-    lengths = {}
-    three_p_length = 0  # initialise
     for five_p_bc, three_p_bcs in linked_bcs.items():
         if len(three_p_bcs) > 0:  # ie this 5' barcode has 3' barcodes
-
+            # check they're consistent
+            check_N_position(three_p_bcs, "3")
+            # work out the min score
+            min_score = len([a for a, b in enumerate(three_p_bcs[0]) if b != "N"]) - three_p_mismatches
             this_dict = make_3p_bc_dict(three_p_bcs, min_score)
-
             d[five_p_bc] = this_dict
 
-            # find the length of each barcode
-            for bc in three_p_bcs:
-                three_p_length = len(bc)
-                lengths[len(bc)] = 1
-
-    # check that barcodes are all the same length, or there are none
-    assert len(lengths) <= 1, "Your barcodes are different lengths, this is not allowed."
-    return d, three_p_length
+    return d
 
 
 class WorkerProcess(Process):  # /# have to have "Process" here to enable worker.start()
@@ -365,8 +356,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._min_score_5_p = min_score_5_p  #
         self._min_score_3_p = min_score_3_p
         self._linked_bcs = linked_bcs  # which 3' barcodes each 5' bc is linked - a dictionary
-        self._three_p_bc_dict_of_dicts, self._3p_length = make_dict_of_3p_bc_dicts(self._linked_bcs,
-                                                                                   min_score=self._min_score_3_p)  # a dict of dicts - each 5' barcodes has
+        self._three_p_bc_dict_of_dicts = make_dict_of_3p_bc_dicts(self._linked_bcs)  # a dict of dicts - each 5' barcodes has
         # a dict of which 3' barcode matches the given sequence, which is also a dict
         self._ultra_mode = ultra_mode
         self._output_directory = output_directory
@@ -479,8 +469,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                             read, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read,
                                                                                        self._three_p_bc_dict_of_dicts[
                                                                                            five_p_bc],
-                                                                                       length=self._3p_length,
-                                                                                       add_umi=True)
+                                                                                       add_umi=True,
+                                                                                   linked_bcds=self._linked_bcs[five_p_bc])
 
                             if not three_p_bc == "no_match":
                                 assigned_reads += 1
@@ -618,8 +608,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                             read2, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read2,
                                                                                         self._three_p_bc_dict_of_dicts[
                                                                                             five_p_bc],
-                                                                                        length=self._3p_length,
                                                                                         add_umi=False,
+                                                                                        linked_bcds=self._linked_bcs[
+                                                                                            five_p_bc],
                                                                                         reverse_complement=True)
 
                             # add the second umi
@@ -1234,8 +1225,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p,
                                                                                     mismatch_3p)
 
-    check_N_position(five_p_bcs, "5")
-    check_N_position(three_p_bcs, "3")
+    check_N_position(five_p_bcs, "5") # check 3' later so that different 5' barcodes can have different types of 3' bcd
 
     # remove files from previous runs
     clean_files(output_directory, save_name)
