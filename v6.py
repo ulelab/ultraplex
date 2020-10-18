@@ -297,8 +297,8 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 		self._id = index # the worker id
 		self._read_pipe = read_pipe # the pipe the reader reads data from
 		self._need_work_queue = need_work_queue # worker adds its id to this queue when it needs work
-		self._end_qc = q5 # quality score to trim qc from 3' end
-		self._start_qc = three_p_trim_q # quality score to trim qc from 5' end
+		self._end_qc = three_p_trim_q # quality score to trim qc from 3' end
+		self._start_qc = q5 # quality score to trim qc from 5' end
 		self._total_demultiplexed = total_demultiplexed # a queue which keeps track of the total number of reads processed
 		self._total_reads_assigned = total_reads_assigned # a queue which keeps track of the total number of reads assigned to sample files
 		self._total_reads_qtrimmed = total_reads_qtrimmed # a queue which keeps track of the total number of reads quality trimmed
