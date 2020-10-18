@@ -342,7 +342,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  min_length,
                  q5,
                  i2,
-                 adapter2):
+                 adapter2,
+                 min_trim):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -371,18 +372,16 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._output_directory = output_directory
         self._i2 = i2  # paired end file name, or false
         self._adapter2 = adapter2
+        self._min_trim = min_trim
 
-    def trim_and_cut(self, read, quality_3, quality_5, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
+    def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
         q_start, q_stop = quality_trim_index(read.qualities, self._start_qc, self._end_qc)
         prev_length = len(read.sequence)
         read = read[q_start:q_stop]
         if not len(read.sequence) == prev_length:
             # then it was trimmed
-            trimmed = True
             reads_quality_trimmed += 1
-        else:
-            trimmed = False
 
         # /# then, trim adapter
         prev_length = len(read.sequence)
@@ -394,7 +393,12 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         else:
             trimmed = False
 
-        return read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed
+        if prev_length - len(read.sequence) >= self._min_trim:
+            min_trimmed = True
+        else:
+            min_trimmed = False
+
+        return read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed
 
     def run(self):
 
@@ -437,9 +441,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     reads_written += 1
                     umi = ""
 
-                    read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed = self.trim_and_cut(read,
-                                                                                                    self._end_qc,
-                                                                                                    self._start_qc,
+                    read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed = self.trim_and_cut(read,
                                                                                                     cutter,
                                                                                                     reads_quality_trimmed,
                                                                                                     reads_adaptor_trimmed)
@@ -473,7 +475,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                             if not five_p_bc == "no_match":
                                 assigned_reads += 1
 
-                        elif trimmed:  # if it is linked to 3' barcodes and has been trimmed
+                        elif min_trimmed:  # if it is linked to 3' barcodes and has been trimmed
                             read, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read,
                                                                                        self._three_p_bc_dict_of_dicts[
                                                                                            five_p_bc],
@@ -555,16 +557,12 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     umi = ""
                     reads_written += 1
                     # /# first, trim by quality score
-                    read1, trimmed1, reads_quality_trimmed, reads_adaptor_trimmed = self.trim_and_cut(read1,
-                                                                                                      self._end_qc,
-                                                                                                      self._start_qc,
+                    read1, trimmed1, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed1 = self.trim_and_cut(read1,
                                                                                                       cutter1,
                                                                                                       reads_quality_trimmed,
                                                                                                       reads_adaptor_trimmed)
 
-                    read2, trimmed2, ignore, ignore_also = self.trim_and_cut(read2,
-                                                                             self._end_qc,
-                                                                             self._start_qc,
+                    read2, trimmed2, ignore, ignore_also, min_trimmed2 = self.trim_and_cut(read2,
                                                                              cutter2,
                                                                              reads_quality_trimmed,
                                                                              reads_adaptor_trimmed)
@@ -856,7 +854,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
-                  ultra_mode, output_directory, min_length, q5, i2, adapter2):
+                  ultra_mode, output_directory, min_length, q5, i2, adapter2, min_trim):
     """
 	This function starts all the workers
 	"""
@@ -897,7 +895,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                min_length,
                                q5=q5,
                                i2=i2,
-                               adapter2=adapter2)
+                               adapter2=adapter2,
+                               min_trim = min_trim)
 
         worker.start()
         workers.append(worker)
@@ -1174,6 +1173,9 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     optional.add_argument("-a2", "--adapter2", type=str, default="AGATCGGAAGAGCGTCGTG",
                           nargs="?",
                           help="sequencing adaptor to trim for the reverse read [Default AGATCGGAAGAGCGTCGTG]")
+    optional.add_argument("-mt", "--min_trim", type=int, default=3, nargs="?",
+    help=("When using single end reads for 3' demultiplexing, this is the minimum adapter trimming amount for a 3'" 
+          "barcode to be detected. Default = 3"))
 
     parser._action_groups.append(optional)
     args = parser.parse_args()
@@ -1210,6 +1212,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     min_length = args.min_length
     q5 = args.phredquality_5_prime
     i2 = args.input_2
+    min_trim = args.min_trim
 
     if i2 == "":
         i2 = False
@@ -1260,7 +1263,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     min_length,
                                                     q5=q5,
                                                     i2=i2,
-                                                    adapter2=adapter2)
+                                                    adapter2=adapter2,
+                                                    min_trim = min_trim)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
