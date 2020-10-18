@@ -534,7 +534,7 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 
 				for read1, read2 in zip(InputFiles(infiles_1).open(), InputFiles(infiles_2).open()):
 					# First, check that they have the same name
-					assert read1.name == read2.name, "Paired reads are mismatched"
+					#assert read1.name == read2.name, "Paired reads are mismatched"
 
 					umi = ""
 					reads_written += 1
