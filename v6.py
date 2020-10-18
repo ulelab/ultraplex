@@ -238,7 +238,7 @@ def three_p_demultiplex(read, d, length):
 		read.sequence = read.sequence[0:(len(read)-length)]
 		read.qualities = read.qualities[0:(len(read.qualities)-length)]
 		# add to umi
-		umi_poses = [a == 'N' for a in assigned]
+		umi_poses = [a for a,b in enumerate(assigned) if b == 'N']
 		umi = ''.join(bc[a] for a in umi_poses)
 		if "rbc:" in read.name: 
 			read.name = read.name + umi
