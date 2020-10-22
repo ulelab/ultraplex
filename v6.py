@@ -280,8 +280,6 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
                 read.name = read.name + umi
             else:
                 read.name = read.name + "rbc:" + umi
-    else:
-        print(read)
 
     if reverse_complement:
         # spin back round
