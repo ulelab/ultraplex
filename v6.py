@@ -429,9 +429,9 @@ class WorkerProcess(Process): #/# have to have "Process" here to enable worker.s
 					else: # linked to 3' barcode but wasn't trimmed so can't assign
 						comb_bc = '_5bc_' + five_p_bc + '_3bc_' + 'no_match'
 						try:
-						this_buffer_dict[comb_bc].append(read)
+							this_buffer_dict[comb_bc].append(read)
 						except:
-						this_buffer_dict[comb_bc] = [read]
+							this_buffer_dict[comb_bc] = [read]
 
 			## Write out! ##
 			for demulti_type, reads in this_buffer_dict.items():
