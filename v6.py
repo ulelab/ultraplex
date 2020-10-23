@@ -830,8 +830,8 @@ def find_bc_and_umi_pos(barcodes):
     bcs_poses = {}
     umi_poses = {}
     for bc in barcodes:
-        bcs_poses[bc] = [i for i in range(len(barcodes[0])) if barcodes[0][i] != "N"]
-        umi_poses[bc] = [i for i in range(len(barcodes[0])) if barcodes[0][i] == "N"]
+        bcs_poses[bc] = [i for i in range(len(bc)) if bc[i] != "N"]
+        umi_poses[bc] = [i for i in range(len(bc)) if bc[i] == "N"]
 
     # /# we assume that the barcode is always the same
     bc_pos = bcs_poses[barcodes[0]]
