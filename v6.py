@@ -1016,8 +1016,9 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
                     fivelength = len(comma_split[0].rstrip().replace("N", ""))
                 else:
                     assert len(comma_split[0].rstrip().replace("N", "")) == fivelength, "5' barcodes not consistent"
+                
                 # find the 3' barcodes
-                three_ps = comma_split[1].split(";")
+                three_ps = [b for a, b in enumerate(comma_split) if a > 0 and b != ""]
                 linked[comma_split[0]] = three_ps
 
                 for bc in three_ps:
