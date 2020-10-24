@@ -982,11 +982,11 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
     three_p_bcs = []
     linked = {}
 
-    counter_5 = 0
-    counter_3 = 0
+    counter_5 = 0 # all 5' barcodes must be consistent
 
     with open(csv, 'r') as file:
         for row in file:
+            counter_3 = 0 # 3' barcodes only have to be consistent for each 5' barcode
             counter_5 += 1
             # First, find if theres a comma
             line = row.rstrip().replace(" ", "").upper()
