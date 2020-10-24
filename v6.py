@@ -989,7 +989,7 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
         for row in file:
             counter_5 += 1
             # First, find if theres a comma
-            line = row.rstrip()
+            line = row.rstrip().replace(" ", "").upper()
             comma_split = line.split(',')
 
             if len(comma_split) > 1:
