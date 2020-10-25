@@ -724,6 +724,7 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed,
             # TODO make this faster - perhaps a cython function; also allow for insertions
             if sum(a==b for a, b in zip(end_of_read, remove_rc[0:j]))/j >= min_equality:
                 read = read[0:len(read) - j]
+                break
     return read
 
 
