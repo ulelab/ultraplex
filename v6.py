@@ -292,7 +292,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
     return read, assigned, umi, to_remove
 
 # TODO link three_p_mismatches to input
-def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches = 0):
+def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches):
     """
 	this function makes a different dictionary for each 5' barcode
 	it also checks that they're all the same length
@@ -327,7 +327,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  total_reads_assigned, total_reads_qtrimmed, total_reads_adaptor_trimmed,
                  total_reads_5p_no_3p,
                  ultra_mode,
-                 min_score_5_p, min_score_3_p,
+                 min_score_5_p, three_p_mismatches,
                  linked_bcs,
                  three_p_trim_q,
                  min_length,
@@ -351,12 +351,11 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         # that this needs to include the length of the barcodes and umis, so should be quite long eg 22 nt
         self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcs"?
         self._save_name = save_name  # the name to save the output fastqs
-        self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs)
+        self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs, min_score_5_p)
         self._five_p_bc_dict = make_5p_bc_dict(five_p_bcs, min_score_5_p)
         self._min_score_5_p = min_score_5_p  #
-        self._min_score_3_p = min_score_3_p
         self._linked_bcs = linked_bcs  # which 3' barcodes each 5' bc is linked - a dictionary
-        self._three_p_bc_dict_of_dicts = make_dict_of_3p_bc_dicts(self._linked_bcs)  # a dict of dicts - each 5' barcodes has
+        self._three_p_bc_dict_of_dicts = make_dict_of_3p_bc_dicts(self._linked_bcs, three_p_mismatches)  # a dict of dicts - each 5' barcodes has
         # a dict of which 3' barcode matches the given sequence, which is also a dict
         self._ultra_mode = ultra_mode
         self._output_directory = output_directory
@@ -848,7 +847,7 @@ def find_bc_and_umi_pos(barcodes):
 def start_workers(n_workers, input_file, need_work_queue, adapter,
                   five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
-                  min_score_5_p, min_score_3_p, linked_bcs, three_p_trim_q,
+                  min_score_5_p, three_p_mismatches, linked_bcs, three_p_trim_q,
                   ultra_mode, output_directory, min_length, q5, i2, adapter2, min_trim):
     """
 	This function starts all the workers
@@ -884,7 +883,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                total_reads_5p_no_3p,
                                ultra_mode,
                                min_score_5_p,
-                               min_score_3_p,
+                               three_p_mismatches,
                                linked_bcs,
                                three_p_trim_q,
                                min_length,
@@ -1001,7 +1000,7 @@ def clean_files(output_directory, save_name):
         os.remove(file)
 
 
-def process_bcs(csv, mismatch_5p, mismatch_3p):
+def process_bcs(csv, mismatch_5p):
     five_p_bcs = []
     three_p_bcs = []
     linked = {}
@@ -1079,12 +1078,8 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
     three_p_bcs = list(dict.fromkeys(three_p_bcs))
 
     match_5p = fivelength - mismatch_5p
-    if counter_3 > 0:
-        match_3p = threelength - mismatch_3p
-    else:
-        match_3p = 100000
 
-    return five_p_bcs, three_p_bcs, linked, match_5p, match_3p, sample_names
+    return five_p_bcs, three_p_bcs, linked, match_5p, sample_names
 
 
 def print_header():
@@ -1237,7 +1232,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     file_name = args.inputfastq
     barcodes_csv = args.barcodes
     mismatch_5p = args.fiveprimemismatches
-    mismatch_3p = args.threeprimemismatches
+    three_p_mismatches = args.threeprimemismatches
     three_p_trim_q = args.phredquality
     threads = args.threads
     adapter = args.adapter
@@ -1268,8 +1263,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     check_enough_space(output_directory, file_name, ignore_space_warning, ultra_mode, i2)
 
     # process the barcodes csv
-    five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p, sample_names = process_bcs(barcodes_csv, mismatch_5p,
-                                                                                    mismatch_3p)
+    five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, sample_names = process_bcs(barcodes_csv, mismatch_5p)
 
     check_N_position(five_p_bcs, "5") # check 3' later so that different 5' barcodes can have different types of 3' bcd
 
@@ -1292,7 +1286,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     three_p_bcs, save_name,
                                                     total_demultiplexed, total_reads_assigned, total_reads_qtrimmed,
                                                     total_reads_adaptor_trimmed, total_reads_5p_no_3p,
-                                                    min_score_5_p, min_score_3_p,
+                                                    min_score_5_p, three_p_mismatches,
                                                     linked_bcs, three_p_trim_q,
                                                     ultra_mode,
                                                     output_directory,
