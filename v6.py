@@ -265,7 +265,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
 
     umi = ""  # initialise
 
-    if not assigned == "no_match":
+    if not assigned == "no_match": # ie there is a match - then we need to trim
 
         # add to umi
         umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
@@ -723,8 +723,7 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed,
             #if end_of_read == remove_rc[0:j]:  # then this is probably the barcode so trim
             # TODO make this faster - perhaps a cython function; also allow for insertions
             if sum(a==b for a, b in zip(end_of_read, remove_rc[0:j]))/j >= min_equality:
-                read.sequence = read.sequence[0:len(read.sequence) - j]
-
+                read = read[0:len(read) - j]
     return read
 
 
