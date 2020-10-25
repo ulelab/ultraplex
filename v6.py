@@ -902,6 +902,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 def concatenate_files(save_name, ultra_mode,
                       sbatch_compression,
                       output_directory,
+                      sample_names,
                       compression_threads=8):
     """
 	this function concatenates all the files produced by the 
@@ -916,7 +917,7 @@ def concatenate_files(save_name, ultra_mode,
         this_type = name.split("_tmp_thread_")[0]
 
         if this_type not in all_types:
-            all_types.append(this_type)
+            all_types.append(this_type) # this_type contains directory if applicable
 
     # now concatenate them
     if ultra_mode:
@@ -974,6 +975,19 @@ def concatenate_files(save_name, ultra_mode,
             for name in filenames:
                 os.remove(name)
 
+    if len(sample_names) > 0: # ie the user has specified at least one sample name
+        for this_type in all_types:
+            sample_name_list = []
+            # check whether any of the keys in the dictionary match this type
+            for key, value in sample_names:
+                if key in this_type:
+                    sample_name_list.append(key)
+            if len(sample_name_list) == 1: # check that only one name matches
+                os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[1]]+".fastq.gz")
+            if len(sample_name_list) > 1:
+                print("Warning - unable to rename files as filename-sample combination was not unique")
+
+
 
 def clean_files(output_directory, save_name):
     files = glob.glob(output_directory + 'ultraplex_' + save_name + '*')
@@ -985,6 +999,7 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
     five_p_bcs = []
     three_p_bcs = []
     linked = {}
+    sample_names = {}
 
     counter_5 = 0 # all 5' barcodes must be consistent
 
@@ -1008,26 +1023,44 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
 
             if just_5p:
                 # then there's no 3' barcode
-                five_p_bcs.append(comma_split[0])
+                five_p_bcs.append(comma_split[0].split(":")[0])
+                assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
+                
+                if len(comma_split[0].split(":")) > 1:
+                    if comma_split[0].split(":")[1] != "":
+                        sample_names["5bc_" + comma_split[0].split(":")[0]] = comma_split[0].split(":")[1]
+
                 if counter_5 == 1:
-                    fivelength = len(comma_split[0].rstrip().replace("N", ""))
+                    fivelength = len(comma_split[0].rstrip().replace("N", "").split(":")[0])
                 else:
-                    assert len(comma_split[0].rstrip().replace("N", "")) == fivelength, "5' barcodes not consistent"
+                    assert len(comma_split[0].rstrip().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
             else:
                 # then we have 3 prime bcds
-                five_p_bcs.append(comma_split[0])
+                five_p_bcs.append(comma_split[0].split(":")[0])                        
+                assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
+                if comma_split[0].count(":") == 1:
+                    assert comma_split[0].count(":")[1] == "", "You cannot name the 5' sample if it's linked to 3' barcodes (please remove 5' barcode name)"
+
                 if counter_5 == 1:
-                    fivelength = len(comma_split[0].rstrip().replace("N", ""))
+                    fivelength = len(comma_split[0].rstrip().replace("N", "").split(":")[0])
                 else:
-                    assert len(comma_split[0].rstrip().replace("N", "")) == fivelength, "5' barcodes not consistent"
+                    assert len(comma_split[0].rstrip().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
                 
                 # find the 3' barcodes
                 three_ps = [b for a, b in enumerate(comma_split) if a > 0 and b != ""]
-                linked[comma_split[0]] = three_ps
+                linked[comma_split[0]] = [a.split(":")[0] for a in three_ps]
 
-                for bc in three_ps:
+                for bc_and_sample in three_ps:
+                    assert bc_and_sample.count(":") <= 1, "multiple colons in 3' barcode"
+
+                    bc = bc_and_sample.split(":")[0]
+                    3_p_sample_name = bc_and_sample.split(":")[1]
+
                     counter_3 += 1
                     three_p_bcs.append(bc)
+
+                    sample_names["5bc_" + comma_split[0].split(":")[0] + "_3bc_" + bc] = 3_p_sample_name
+
                     if counter_3 == 1:
                         threelength = len(bc.replace("N", ""))
                     else:
@@ -1043,7 +1076,7 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
     else:
         match_3p = 100000
 
-    return five_p_bcs, three_p_bcs, linked, match_5p, match_3p
+    return five_p_bcs, three_p_bcs, linked, match_5p, match_3p, sample_names
 
 
 def print_header():
@@ -1227,7 +1260,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     check_enough_space(output_directory, file_name, ignore_space_warning, ultra_mode, i2)
 
     # process the barcodes csv
-    five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p = process_bcs(barcodes_csv, mismatch_5p,
+    five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, min_score_3_p, sample_names = process_bcs(barcodes_csv, mismatch_5p,
                                                                                     mismatch_3p)
 
     check_N_position(five_p_bcs, "5") # check 3' later so that different 5' barcodes can have different types of 3' bcd
@@ -1267,7 +1300,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     reader_process.daemon = True
     reader_process.run()
 
-    concatenate_files(save_name, ultra_mode, sbatch_compression, output_directory)
+    concatenate_files(save_name, ultra_mode, sbatch_compression, output_directory, sample_names)
 
     total_processed_reads = total_demultiplexed.get()[0]
     runtime_seconds = str((time.time() - start) // 1)
