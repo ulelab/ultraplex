@@ -699,7 +699,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
             self._total_reads_5p_no_3p.put(new_total)
 
 
-def remove_mate_adapter(read, to_remove, bcd, trimmed):
+def remove_mate_adapter(read, to_remove, bcd, trimmed,
+    min_equality = 0.8):
     """
     This function looks for the barcoded adapter (UMI-specific, not just Ns) in the mate read. It then checks
     that not too much was removed
@@ -708,6 +709,7 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed):
     reverse read = CCCTTTb5b4b3b2b1iiiiii where i is the illumina adapter for the reverse read
     the reverse read then gets trimmed to CCCTTTb5b4b3b2b1
     So now we just look for bbbbb, which is the reverse complement of what was removed
+    min_equality means it can handle mismatches (but not insertions)
     """
 
     if trimmed:  # then remove
@@ -718,7 +720,9 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed):
             j = len(bcd) - i
             # take the last jth seqs and see if they match
             end_of_read = read.sequence[-j:]
-            if end_of_read == remove_rc[0:j]:  # then this is probably the barcode so trim
+            #if end_of_read == remove_rc[0:j]:  # then this is probably the barcode so trim
+            # TODO make this faster - perhaps a cython function; also allow for insertions
+            if sum(a==b for a, b in zip(end_of_read, remove_rc[0:j]))/j >= min_equality:
                 read.sequence = read.sequence[0:len(read.sequence) - j]
 
     return read
