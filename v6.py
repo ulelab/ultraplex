@@ -1072,6 +1072,8 @@ def process_bcs(csv, mismatch_5p, mismatch_3p):
                     else:
                         assert len(bc.replace("N", "")) == threelength, "3' barcodes not consistent"
 
+    assert len(sample_names) == len(set(sample_names.values())), "Sample names are not unique!"
+
     # remove duplicates
     five_p_bcs = list(dict.fromkeys(five_p_bcs))
     three_p_bcs = list(dict.fromkeys(three_p_bcs))
