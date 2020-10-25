@@ -979,8 +979,8 @@ def concatenate_files(save_name, ultra_mode,
         for this_type in all_types:
             sample_name_list = []
             # check whether any of the keys in the dictionary match this type
-            for key, value in sample_names:
-                if key in this_type:
+            for key, value in sample_names.items():
+                if key in this_type and "no_match" not in this_type:
                     # check that if key doesn't contain 3' barcode, then the type does either
                     if "_3bc_" in this_type:
                         if "_3bc_" in key:
