@@ -981,11 +981,17 @@ def concatenate_files(save_name, ultra_mode,
             # check whether any of the keys in the dictionary match this type
             for key, value in sample_names:
                 if key in this_type:
-                    sample_name_list.append(key)
+                    # check that if key doesn't contain 3' barcode, then the type does either
+                    if "_3bc_" in this_type:
+                        if "_3bc_" in key:
+                            sample_name_list.append(key)
+                    else: # if 3' bc is not in the type, the by definition if won't be in the key
+                        sample_name_list.append(key)
+
             if len(sample_name_list) == 1: # check that only one name matches
                 os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[1]]+".fastq.gz")
             if len(sample_name_list) > 1:
-                print("Warning - unable to rename files as filename-sample combination was not unique")
+                print("Warning - unable to rename file as filename-sample combination was not unique")
 
 
 
