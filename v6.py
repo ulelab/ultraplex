@@ -195,7 +195,6 @@ def make_3p_bc_dict(bcs, min_score):
             if score >= min_score:
                 correct_bcs.append(bc)
 
-
         if len(correct_bcs) == 1:
             three_p_match_d[seq] = correct_bcs[0]
     return three_p_match_d
@@ -302,7 +301,7 @@ def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches):
         if len(three_p_bcs) > 0:  # ie this 5' barcode has 3' barcodes
             # check they're consistent
             check_N_position(three_p_bcs, "3")
-            # work out the min score
+            # work out the min score - only do first one because already checked they're consistent
             min_score = len([a for a, b in enumerate(three_p_bcs[0]) if b != "N"]) - three_p_mismatches
             this_dict = make_3p_bc_dict(three_p_bcs, min_score)
             d[five_p_bc] = this_dict
