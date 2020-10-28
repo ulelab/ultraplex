@@ -40,3 +40,8 @@ python3 ultraplex.py -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/
 
 # verify that samples 1-3, 4-6 and 7-9 have 4-6, 5-7 and 6-8 umis respectively. Verify that sample 9 has UMI of TTTTAAG, and fwd read AAAA.....AAA, rev read TTTT...TTT
 python3 ultraplex.py -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_3nt_bc_789.csv -d tests/test_simple/3nt_789 -o 3nt_789
+
+# verify that mate adapter is correctly removed
+python3 ultraplex.py -i tests/test_simple/example_read_1.fastq.gz -i2 tests/test_simple/example_read_2.fastq.gz -b tests/test_simple/barcodes_3nt_bc_789.csv -d tests/test_simple/mate -o mate
+
+

@@ -413,7 +413,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 infiles = io.BytesIO(data)
 
                 # Define the cutter
-                adapter = [BackAdapter(self._adapter, max_error_rate=0.1)]
+                adapter = [BackAdapter(self._adapter, max_error_rate=0.1, min_overlap=1)]
                 cutter = AdapterCutter(adapter, times=1)
 
                 # /# process the reads
@@ -523,8 +523,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 infiles2 = io.BytesIO(data2)
 
                 # Define the cutter
-                adapter1 = [BackAdapter(self._adapter, max_error_rate=0.1)]
-                adapter2 = [BackAdapter(self._adapter2, max_error_rate=0.1)]
+                adapter1 = [BackAdapter(self._adapter, max_error_rate=0.1, min_overlap=1)]
+                adapter2 = [BackAdapter(self._adapter2, max_error_rate=0.1, min_overlap=1)]
                 cutter1 = AdapterCutter(adapter1, times=1)
                 cutter2 = AdapterCutter(adapter2, times=1)
 
