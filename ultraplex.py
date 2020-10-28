@@ -246,8 +246,8 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
 
     # find the positions of the non-N characters relative to 3' end
     # TODO precalculate these for faster operation - make a dict of positions for each 5' bacordes linked 3' barcodes
-    bc_length = len(linked_bcds[0])
-    non_N_poses = [a-bc_length for a, b in enumerate(linked_bcds[0]) if b != "N"] # all negative
+    bc_length_reference = len(linked_bcds[0]) # can use [0] because non-N guaranteed to be consistent
+    non_N_poses = [a-bc_length_reference for a, b in enumerate(linked_bcds[0]) if b != "N"] # all negative
 
     seq_length = len(sequence)
     positions_to_extract = [x+seq_length for x in non_N_poses]
@@ -265,7 +265,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
     umi = ""  # initialise
 
     if not assigned == "no_match": # ie there is a match - then we need to trim
-
+        bc_length = len(assigned)
         # add to umi
         umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
         umi_positions_to_extract = [x + seq_length for x in umi_poses]
