@@ -1032,7 +1032,7 @@ def process_bcs(csv, mismatch_5p):
 
             if just_5p:
                 # then there's no 3' barcode
-                five_p_bcs.append(comma_split[0].split(":")[0]).upper()
+                five_p_bcs.append(comma_split[0].split(":")[0].upper())
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
                 
                 if len(comma_split[0].split(":")) > 1:
