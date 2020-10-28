@@ -1012,7 +1012,7 @@ def process_bcs(csv, mismatch_5p):
             counter_3 = 0 # 3' barcodes only have to be consistent for each 5' barcode
             counter_5 += 1
             # First, find if theres a comma
-            line = row.rstrip().replace(" ", "").upper()
+            line = row.rstrip().replace(" ", "")
             comma_split = line.split(',')
 
             if len(comma_split) > 1:
@@ -1027,37 +1027,37 @@ def process_bcs(csv, mismatch_5p):
 
             if just_5p:
                 # then there's no 3' barcode
-                five_p_bcs.append(comma_split[0].split(":")[0])
+                five_p_bcs.append(comma_split[0].split(":")[0]).upper()
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
                 
                 if len(comma_split[0].split(":")) > 1:
                     if comma_split[0].split(":")[1] != "":
-                        sample_names["5bc_" + comma_split[0].split(":")[0]] = comma_split[0].split(":")[1]
+                        sample_names["5bc_" + comma_split[0].split(":")[0].upper()] = comma_split[0].split(":")[1]
 
                 if counter_5 == 1:
-                    fivelength = len(comma_split[0].rstrip().replace("N", "").split(":")[0])
+                    fivelength = len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0])
                 else:
-                    assert len(comma_split[0].rstrip().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
+                    assert len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
             else:
                 # then we have 3 prime bcds
-                five_p_bcs.append(comma_split[0].split(":")[0])                        
+                five_p_bcs.append(comma_split[0].split(":")[0].upper())                        
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
                 if comma_split[0].count(":") == 1:
                     assert comma_split[0].count(":")[1] == "", "You cannot name the 5' sample if it's linked to 3' barcodes (please remove 5' barcode name)"
 
                 if counter_5 == 1:
-                    fivelength = len(comma_split[0].rstrip().replace("N", "").split(":")[0])
+                    fivelength = len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0])
                 else:
-                    assert len(comma_split[0].rstrip().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
+                    assert len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
                 
                 # find the 3' barcodes
                 three_ps = [b for a, b in enumerate(comma_split) if a > 0 and b != ""]
-                linked[comma_split[0]] = [a.split(":")[0] for a in three_ps]
+                linked[comma_split[0]] = [a.split(":")[0].upper() for a in three_ps]
 
                 for bc_and_sample in three_ps:
                     assert bc_and_sample.count(":") <= 1, "multiple colons in 3' barcode"
 
-                    bc = bc_and_sample.split(":")[0]
+                    bc = bc_and_sample.split(":")[0].upper()
                     if len(bc_and_sample.split(":")) > 1:
                         if not bc_and_sample.split(":")[1] == "":
                             three_p_sample_name = bc_and_sample.split(":")[1]
