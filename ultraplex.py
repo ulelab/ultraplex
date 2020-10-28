@@ -987,7 +987,12 @@ def concatenate_files(save_name, ultra_mode,
                         sample_name_list.append(key)
 
             if len(sample_name_list) == 1: # check that only one name matches
-                os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+".fastq.gz")
+                if "Fwd" in this_type:
+                    os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+"_Fwd.fastq.gz")
+                elif "Rev" in this_type:
+                    os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+"_Rev.fastq.gz")
+                else:
+                    os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+".fastq.gz")
             if len(sample_name_list) > 1:
                 print("Warning - unable to rename file as filename-sample combination was not unique")
 
