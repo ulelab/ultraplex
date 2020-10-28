@@ -350,7 +350,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         # that this needs to include the length of the barcodes and umis, so should be quite long eg 22 nt
         self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcs"?
         self._save_name = save_name  # the name to save the output fastqs
-        self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs, min_score_5_p)
+        self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs)
         self._five_p_bc_dict = make_5p_bc_dict(five_p_bcs, min_score_5_p)
         self._min_score_5_p = min_score_5_p  #
         self._linked_bcs = linked_bcs  # which 3' barcodes each 5' bc is linked - a dictionary
@@ -1058,12 +1058,13 @@ def process_bcs(csv, mismatch_5p):
                     assert bc_and_sample.count(":") <= 1, "multiple colons in 3' barcode"
 
                     bc = bc_and_sample.split(":")[0]
-                    3_p_sample_name = bc_and_sample.split(":")[1]
+                    if len(bc_and_sample.split(":")) > 1:
+                        if not bc_and_sample.split(":")[1] == "":
+                            three_p_sample_name = bc_and_sample.split(":")[1]
+                            sample_names["5bc_" + comma_split[0].split(":")[0] + "_3bc_" + bc] = three_p_sample_name
 
                     counter_3 += 1
                     three_p_bcs.append(bc)
-
-                    sample_names["5bc_" + comma_split[0].split(":")[0] + "_3bc_" + bc] = 3_p_sample_name
 
                     if counter_3 == 1:
                         threelength = len(bc.replace("N", ""))
