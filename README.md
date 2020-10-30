@@ -3,9 +3,13 @@
 Ultraplex is an all-in-one software package for processing and demultiplexing fastq files. It performs the following processing steps:
 
 *Removes poor quality bases (normally from the 3' end only)
+
 *Removes sequencing adaptors (eg Illumina universal sequencing adaptor)
+
 *Moves unique molecular identifiers (UMIs) to the read header for downstream deduplication
+
 *Detects 5’ and (optionally) 3’ barcodes for (combinatorial) demultiplexing
+
 *Writes out files for each barcode (or barcode combination)
 
 Ultraplex was designed with speed and ease of use in mind. It is capable of demultiplexing an entire HiSeq lane, consisting of ~400 million reads, in just 20 minutes.
@@ -33,7 +37,9 @@ The fastq file should be a 4-line per read fastq. It should be in gzipped format
 For the barcode csv, the first column contains a list of all the 5’ barcodes, and (optionally) the other column(s) contain the 3’ barcode(s) linked to that specific 5’ barcode. For example, the following csv has three 5’ barcodes, the second of which is linked to two 3’ barcodes: 
 
 NNNATGNN,
+
 NNNCCGNN,ATG,TCA
+
 NNNCACNN,
 
 There are certain constraints on the barcode sequences that can be used. It is required that the length and position of the non-N nucleotides in the barcodes be consistent for all 5’ barcodes, and all 3’ barcodes linked to that specific 5’ barcode if used. 3’ barcodes linked to different 5’ barcodes do not have to be consistent with each other. 5’ barcodes do not have to be consistent with 3’ barcodes. Barcodes can have different numbers of Ns, provided that the non-N characters are all consistent.
