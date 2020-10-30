@@ -2,7 +2,7 @@ import pathlib
 from setuptools import setup
 
 # The directory containing this file
-HERE = os.path.abspath(os.path.dirname(__file__))
+HERE = pathlib.Path(__file__).parent
 
 # The text of the README file
 README = (HERE / "README.md").read_text()
