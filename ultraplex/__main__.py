@@ -1100,7 +1100,7 @@ def print_header():
 "                                           | $$                              \n"
 "                                           |__/                              \n")
 
-print(logo)
+    print(logo)
 
 
 def check_enough_space(output_directory, input_file,
