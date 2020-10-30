@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 # This call to setup() does all the work
 setup(
     name="ultraplex",
-    version="0.8.1",
+    version="0.8.2",
     description="fastq demultiplexer",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -28,7 +28,7 @@ setup(
     install_requires=["cutadapt==2.10"],
     entry_points={
         "console_scripts": [
-            "realpython=reader.__main__:main",
+            "ultraplex = __main__.py",
         ]
     },
 )
