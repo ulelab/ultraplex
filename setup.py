@@ -25,7 +25,7 @@ setup(
     ],
     packages=["ultraplex"],
     include_package_data=True,
-    install_requires=["cutadapt"],
+    install_requires=["cutadapt==2.10"],
     entry_points={
         "console_scripts": [
             "realpython=reader.__main__:main",
