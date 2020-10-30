@@ -28,7 +28,7 @@ setup(
     install_requires=["cutadapt==2.10"],
     entry_points={
         "console_scripts": [
-            "ultraplex = package.module:__main__",
+            "ultraplex = ultraplex.__main__:main",
         ]
     },
 )
