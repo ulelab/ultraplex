@@ -47,12 +47,15 @@ There are certain constraints on the barcode sequences that can be used. It is r
 For example, the 5’ barcodes...
 
 NNN ATG NN
+
 NNN CCG NNN
+
 NNN ATG 
 
 ...are all consistent because the non-N characters are all in positions 4-6 relative to the 5’ end of the read. However…
 
 NN ATG NN
+
 NNN ATGC NN
 
 ... are not consistent with the first three barcodes (or each other) because, relative to the 5’ end the barcodes are in positions 3-5 and 4-7 respectively.
@@ -60,6 +63,7 @@ NNN ATGC NN
 The rules governing 3’ barcodes are the same, except that the positions are defined relative to the 3’ end of the read. For example...
 
 NN ATG NNN
+
  N CCG NNN
 
 ...are consistent (positions -6 to -4), but...
@@ -77,13 +81,17 @@ We have noticed that some programs save csvs in a format that is incompatible wi
 Optionally, one can add sample names to the barcodes csv. After each barcode, add a colon, followed by the sample name. Ensure that all sample names are unique. Also ensure that if 3’ barcodes are specified, no name is specified for the 5’ barcode. Some samples can be left unnamed. For example:
 
 NNNATGNN:sample1,
+
 NNNCCGNN,ATG:sample2,TCA:sample3,
+
 NNNCACNN,
 
 ...is fine, but...
 
 NNNATGNN:sample1,
+
 NNNCCGNN:sample2,ATG:sample3,TCA:sample4,
+
 NNNCACNN,
 
 …is not, because sample2 is assigned to a 5’ barcode that is linked to 3’ barcodes, which doesn’t make sense.
