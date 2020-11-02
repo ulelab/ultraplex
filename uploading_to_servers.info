@@ -35,6 +35,4 @@ Then finally:
 
 1. Create a pull request and make sure it passes the tests.
 2. https://gitter.im/bioconda/lobby <- go here and ask for it to be merged
-3. Delete the branch
-
-
+3. Once it's merged and definitely on Bioconda, delete the branch
