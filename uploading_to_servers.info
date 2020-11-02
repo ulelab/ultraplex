@@ -20,16 +20,16 @@ Download and fork bioconda:
 3. git remote add upstream https://github.com/bioconda/bioconda-recipes.git
 4. git checkout master
 5. git pull upstream master
-6. git checkout -b ultraplex_fork
+6. git checkout -b ultraplex
 
 Make the meta.yaml from the pip package
 
 1. cd recipes
 2. conda skeleton pypi pyaml
 3. Add noarch: python to the build section of the meta.yaml file that's generated
-4. git add ultraplex_fork
+4. git add ultraplex
 5. git commit
-6. git push (or maybe: git push --set-upstream origin ultraplex_fork)
+6. git push (or maybe: git push --set-upstream origin ultraplex)
 
 Then finally:
 
