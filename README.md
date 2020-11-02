@@ -1,3 +1,4 @@
+![Ultraplex Logo](gif_logo.gif)
 # What is Ultraplex?
 
 Ultraplex is an all-in-one software package for processing and demultiplexing fastq files. It performs the following processing steps:
