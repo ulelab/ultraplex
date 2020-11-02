@@ -26,8 +26,8 @@ Make the meta.yaml from the pip package
 
 1. cd recipes
 2. conda skeleton pypi pyaml
-3. Add noarch: python to meta.yaml that's generated
-4. git add pyaml
+3. Add noarch: python to the build section of the meta.yaml file that's generated
+4. git add ultraplex_fork
 5. git commit
 6. git push
 
