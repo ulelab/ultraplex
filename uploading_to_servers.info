@@ -1,0 +1,40 @@
+# For pip
+https://realpython.com/pypi-publish-python-package/#preparing-your-package-for-publication 
+
+1. Git clone ultraplex
+2. cd to the directory with setup.py
+3. run: python setup.py sdist bdist_wheel
+4. run: twine upload dist/*
+
+Done.
+
+
+# For bioconda
+
+Here we use the pip package as a skeleton
+
+Download and fork bioconda:
+
+1. git clone https://github.com/<USERNAME>/bioconda-recipes.git
+2. cd bioconda-recipes
+3. git remote add upstream https://github.com/bioconda/bioconda-recipes.git
+4. git checkout master
+5. git pull upstream master
+6. git checkout -b ultraplex_fork
+
+Make the meta.yaml from the pip package
+
+1. cd recipes
+2. conda skeleton pypi pyaml
+3. Add noarch: python to meta.yaml that's generated
+4. git add pyaml
+5. git commit
+6. git push
+
+Then finally:
+
+1. Create a pull request and make sure it passes the tests.
+2. https://gitter.im/bioconda/lobby <- go here and ask for it to be merged
+3. Delete the branch
+
+
