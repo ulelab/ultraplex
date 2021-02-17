@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import Optional, Tuple, Sequence, Dict, Any, List
 from abc import ABC, abstractmethod
 
-import align
+import ultraplex.align as align
 
 logger = logging.getLogger()
 

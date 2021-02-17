@@ -6,8 +6,8 @@ import io
 from multiprocessing import Process, Pipe, Queue
 from typing import BinaryIO
 from qualtrim import quality_trim_index
-from modifiers import AdapterCutter, ModificationInfo
-from adapters import BackAdapter
+from ultraplex.modifiers import AdapterCutter, ModificationInfo
+from ultraplex.adapters import BackAdapter
 import gzip
 import glob
 import time

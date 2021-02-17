@@ -36,7 +36,7 @@ extensions = [
 # This call to setup() does all the work
 setup(
     name="ultraplex",
-    version="1.0.4.2",
+    version="1.0.5",
     description="fastq demultiplexer",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -47,6 +47,7 @@ setup(
     ext_modules=extensions,
    	#package_dir={'': 'ultraplex'},
     #packages=find_packages(''),
+    packages=["ultraplex"],
     install_requires=[
         'dnaio~=0.5.0',
         'xopen~=1.0.0',
@@ -60,7 +61,7 @@ setup(
     include_package_data=True,
      entry_points={
         "console_scripts": [
-            "ultraplex_test = ultraplex.__main__:main",
+            "ultraplex = ultraplex.__main__:main",
         ]
     },
 )
