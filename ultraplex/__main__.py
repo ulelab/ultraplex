@@ -5,9 +5,9 @@ import traceback
 import io
 from multiprocessing import Process, Pipe, Queue
 from typing import BinaryIO
-from cutadapt.qualtrim import quality_trim_index
-from cutadapt.modifiers import AdapterCutter, ModificationInfo
-from cutadapt.adapters import BackAdapter
+#from qualtrim import quality_trim_index
+from modifiers import AdapterCutter, ModificationInfo
+from adapters import BackAdapter
 import gzip
 import glob
 import time
@@ -1087,20 +1087,24 @@ def process_bcs(csv, mismatch_5p):
     return five_p_bcs, three_p_bcs, linked, match_5p, sample_names
 
 
-def print_header():
-    logo=(" /$$   /$$ /$$   /$$                                  /$$                    \n"
-"| $$  | $$| $$  | $$                                 | $$                    \n"
-"| $$  | $$| $$ /$$$$$$    /$$$$$$  /$$$$$$   /$$$$$$ | $$  /$$$$$$  /$$   /$$\n"
-"| $$  | $$| $$|_  $$_/   /$$__  $$|____  $$ /$$__  $$| $$ /$$__  $$|  $$ /$$/\n"
-"| $$  | $$| $$  | $$    | $$  \__/ /$$$$$$$| $$  \ $$| $$| $$$$$$$$ \  $$$$/ \n"
-"| $$  | $$| $$  | $$ /$$| $$      /$$__  $$| $$  | $$| $$| $$_____/  >$$  $$ \n"
-"|  $$$$$$/| $$  |  $$$$/| $$     |  $$$$$$$| $$$$$$$/| $$|  $$$$$$$ /$$/\  $$\n"
-" \______/ |__/   \___/  |__/      \_______/| $$____/ |__/ \_______/|__/  \__/\n"
-"                                           | $$                              \n"
-"                                           | $$                              \n"
-"                                           |__/                              \n")
 
-    print(logo)
+def print_header():
+    print("")
+    print(
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print(
+        "@@@@@   @@@@   .@@   @@@@@@@          @@         @@@@@@    (@@@@@        @@@    @@@@@@@         @@    @@@    @")
+    print(
+        "@@@@   @@@@    @@   ,@@@@@@@@@    @@@@@    @@@   @@@@   (   @@@@   @@@   @@    @@@@@@@   @@@@@@@@@@   #   @@@@")
+    print(
+        "@@@   &@@@    @@    @@@@@@@@@%   @@@@@         @@@@(   @    @@@         @@    @@@@@@@         @@@@@     @@@@@@")
+    print(
+        "@@    @@@    @@    @@@@@@@@@@   @@@@@    @@    @@@          @@   .@@@@@@@*   @@@@@@@    @@@@@@@@.   @    @@@@@")
+    print(
+        "@@@       @@@@.        @@@@@   @@@@@&   @@@.   &   &@@@@    @    @@@@@@@@         @          @    @@@@    @@@@")
+    print(
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print("")
 
 
 def check_enough_space(output_directory, input_file,

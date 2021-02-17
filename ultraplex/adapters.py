@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import Optional, Tuple, Sequence, Dict, Any, List
 from abc import ABC, abstractmethod
 
-from . import align
+import align
 
 logger = logging.getLogger()
 

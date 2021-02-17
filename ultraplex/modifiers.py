@@ -8,9 +8,9 @@ from typing import Sequence, List, Optional
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 
-from .qualtrim import quality_trim_index, nextseq_trim_index
-from .adapters import MultiPrefixAdapter, MultiSuffixAdapter, Match, remainder
-from .utils import reverse_complemented_sequence
+from qualtrim import quality_trim_index, nextseq_trim_index
+from adapters import MultiPrefixAdapter, MultiSuffixAdapter, Match, remainder
+from utils import reverse_complemented_sequence
 
 
 class ModificationInfo:

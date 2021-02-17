@@ -6,7 +6,7 @@ __all__ = [
     'hamming_environment',
 ]
 
-from cutadapt._align import Aligner, PrefixComparer, SuffixComparer
+from _align import Aligner, PrefixComparer, SuffixComparer
 
 # flags for global alignment
 
