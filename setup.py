@@ -29,31 +29,9 @@ so the .c/.cpp files are renamed to .c/.cpp.
 """
 
 extensions = [
-    Extension('ultraplex._align', sources=['ultraplex/_align.pyx']),
-    Extension('ultraplex.qualtrim', sources=['ultraplex/qualtrim.pyx']),
+    Extension('_align', sources=['ultraplex/_align.c']),
+    Extension('qualtrim', sources=['ultraplex/qualtrim.c']),
 ]
-
-
-def no_cythonize(extensions, **_ignore):
-    """
-    Change file extensions from .pyx to .c or .cpp.
-    Copied from Cython documentation
-
-    This is run only if a "PKG-INFO" file is present
-    """
-    for extension in extensions:
-        sources = []
-        for sfile in extension.sources:
-            path, ext = os.path.splitext(sfile)
-            if ext in ('.pyx', '.py'):
-                if extension.language == 'c++':
-                    ext = '.cpp'
-                else:
-                    ext = '.c'
-                sfile = path + ext
-            sources.append(sfile)
-        extension.sources[:] = sources
-
 
 # This call to setup() does all the work
 setup(
@@ -67,12 +45,12 @@ setup(
     author_email="oscar.wilkins@crick.ac.uk",
     license="MIT",
     ext_modules=extensions,
-   	    package_dir={'': 'ultraplex'},
-    packages=find_packages('ultraplex'),
+   	package_dir={'': 'ultraplex'},
+    packages=find_packages(''),
     install_requires=[
         'dnaio~=0.5.0',
         'xopen~=1.0.0',
-        "dataclasses>=0.8; python_version<'3.7'",
+        "dataclasses>=0.8; python_version<'3.9'",
     ],
     classifiers=[
         "License :: OSI Approved :: MIT License",
@@ -80,8 +58,6 @@ setup(
         "Programming Language :: Python :: 3.7",
     ],
     include_package_data=True,
-    #install_requires=["cutadapt==2.10"],
-
      entry_points={
         "console_scripts": [
             "ultraplex = ultraplex.__main__:main",
