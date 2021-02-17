@@ -5,7 +5,7 @@ import traceback
 import io
 from multiprocessing import Process, Pipe, Queue
 from typing import BinaryIO
-#from qualtrim import quality_trim_index
+from qualtrim import quality_trim_index
 from modifiers import AdapterCutter, ModificationInfo
 from adapters import BackAdapter
 import gzip
