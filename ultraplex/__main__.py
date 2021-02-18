@@ -936,7 +936,7 @@ def concatenate_files(save_name, ultra_mode,
             c_thread_n = '-p' + str(compression_threads)
             if sbatch_compression:
                 os.system(
-                    'sbatch -J compression --time 4:00:00 --wrap="pigz ' + c_thread_n + ' ' + this_type + '.fastq"')
+                    'sbatch -J compression -c ' + str(compression_threads) + ' --time 4:00:00 --wrap="pigz ' + c_thread_n + ' ' + this_type + '.fastq"')
             else:
                 os.system('pigz ' + c_thread_n + ' ' + this_type + '.fastq')
 
