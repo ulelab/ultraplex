@@ -1228,7 +1228,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     help=("When using single end reads for 3' demultiplexing, this is the minimum adapter trimming amount for a 3'" 
           "barcode to be detected. Default = 3"))
     optional.add_argument("-inm", "--ignore_no_match", action="store_true", default=False,
-        help="Do no write reads for which there is no match.")
+        help="Do not write reads for which there is no match.")
 
     parser._action_groups.append(optional)
     args = parser.parse_args()
