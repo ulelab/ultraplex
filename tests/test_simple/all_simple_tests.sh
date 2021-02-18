@@ -23,6 +23,9 @@ python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/rea
 # verify that samples 1-3 are NOT assigned
 python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_sample123_wrong_5.csv -d tests/test_simple/wrong_1_2_3 -o wrong_1_2_3 -m5 0
 
+# verify that samples 1-3 are NOT assigned and the no matches are not written out
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_sample123_wrong_5.csv -d tests/test_simple/wrong_1_2_3_inm -o wrong_1_2_3_inm -m5 0 -inm
+
 # verify that samples 1-3 are assigned
 python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_sample123_wrong_5.csv -d tests/test_simple/wrong_1_2_3_mm_allowed -o wrong_1_2_3_mm_allowed -m5 1
 

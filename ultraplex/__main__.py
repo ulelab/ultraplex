@@ -333,7 +333,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  q5,
                  i2,
                  adapter2,
-                 min_trim):
+                 min_trim,
+                 ignore_no_match):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -361,6 +362,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._i2 = i2  # paired end file name, or false
         self._adapter2 = adapter2
         self._min_trim = min_trim
+        self._ignore_no_match = ignore_no_match
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -497,7 +499,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                     demulti_type=demulti_type,
                                     worker_id=self._id,
                                     reads=reads,
-                                    ultra_mode=self._ultra_mode)
+                                    ultra_mode=self._ultra_mode,
+                                    ignore_no_match=self._ignore_no_match)
 
             else:  # if paired end
                 # Notify reader that we need data
@@ -653,7 +656,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                     demulti_type=demulti_type,
                                     worker_id=self._id,
                                     reads=reads,
-                                    ultra_mode=self._ultra_mode)
+                                    ultra_mode=self._ultra_mode,
+                                    ignore_no_match=self._ignore_no_match)
 
                 for demulti_type, reads in this_buffer_dict_2.items():
                     demulti_type = demulti_type + "_Rev"
@@ -662,7 +666,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                     demulti_type=demulti_type,
                                     worker_id=self._id,
                                     reads=reads,
-                                    ultra_mode=self._ultra_mode)
+                                    ultra_mode=self._ultra_mode,
+                                    ignore_no_match=self._ignore_no_match)
 
             # LOG reads processed
             prev_total = self._total_demultiplexed.get()
@@ -727,8 +732,13 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed,
 
 
 def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
-                    ultra_mode):
-    if ultra_mode:
+                    ultra_mode, ignore_no_match):
+
+    write_this = True # assume true
+    if "no_match" in demulti_type and ignore_no_match:
+        write_this = False
+    
+    if ultra_mode and write_this:
         # /# work out this filename
         filename = output_dir + 'ultraplex_' + save_name + demulti_type + '_tmp_thread_' + str(
             worker_id) + '.fastq'
@@ -757,7 +767,8 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
             output = '\n'.join(this_out) + '\n'
             # print(output)
             file.write(output)
-    else:
+    
+    elif write_this:
         # /# work out this filename
         filename = output_dir + 'ultraplex_' + save_name + demulti_type + '_tmp_thread_' + str(
             worker_id) + '.fastq.gz'
@@ -847,7 +858,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, three_p_mismatches, linked_bcs, three_p_trim_q,
-                  ultra_mode, output_directory, min_length, q5, i2, adapter2, min_trim):
+                  ultra_mode, output_directory, min_length, q5, i2, adapter2, min_trim,
+                  ignore_no_match):
     """
 	This function starts all the workers
 	"""
@@ -889,7 +901,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                q5=q5,
                                i2=i2,
                                adapter2=adapter2,
-                               min_trim = min_trim)
+                               min_trim = min_trim,
+                               ignore_no_match=ignore_no_match)
 
         worker.start()
         workers.append(worker)
@@ -1214,6 +1227,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     optional.add_argument("-mt", "--min_trim", type=int, default=3, nargs="?",
     help=("When using single end reads for 3' demultiplexing, this is the minimum adapter trimming amount for a 3'" 
           "barcode to be detected. Default = 3"))
+    optional.add_argument("-inm", "--ignore_no_match", action="store_true", default=False,
+        help="Do no write reads for which there is no match.")
 
     parser._action_groups.append(optional)
     args = parser.parse_args()
@@ -1251,6 +1266,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     q5 = args.phredquality_5_prime
     i2 = args.input_2
     min_trim = args.min_trim
+    ignore_no_match = args.ignore_no_match
 
     if i2 == "":
         i2 = False
@@ -1300,7 +1316,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     q5=q5,
                                                     i2=i2,
                                                     adapter2=adapter2,
-                                                    min_trim = min_trim)
+                                                    min_trim = min_trim,
+                                                    ignore_no_match=ignore_no_match)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
