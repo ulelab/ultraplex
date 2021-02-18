@@ -3,8 +3,9 @@ https://realpython.com/pypi-publish-python-package/#preparing-your-package-for-p
 
 1. Git clone ultraplex
 2. cd to the directory with setup.py
-3. run: python setup.py sdist bdist_wheel
-4. run: twine upload dist/*
+3. run: python setup.py sdist bdist_wheel (activate conda env "twine")
+(you may need to delete the ultraplex-1.0.4-cp39-cp39-linux_x86_64.whl from the dist/ folder)
+4. run: twine upload dist/*  (or "twine upload --repository testpypi dist/*" for tests)
 
 Done.
 
