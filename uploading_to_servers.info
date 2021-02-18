@@ -26,7 +26,7 @@ Download and fork bioconda:
 Make the meta.yaml from the pip package
 
 1. cd recipes
-2. conda skeleton pypi pyaml
+2. conda skeleton pypi ultraplex (maybe need "rm -r ultraplex/" first?)
 3. Add noarch: python to the build section of the meta.yaml file that's generated
 4. git add ultraplex
 5. git commit
@@ -37,3 +37,18 @@ Then finally:
 1. Create a pull request and make sure it passes the tests.
 2. https://gitter.im/bioconda/lobby <- go here and ask for it to be merged
 3. Once it's merged and definitely on Bioconda, delete the branch
+
+
+Upgrading:
+
+For pip, just follow the instructions
+
+For bioconda, merge to master, and it should automatically try to update. 
+In fact, it seems to look at pipy and automatically update based on that?
+
+Make sure you add 
+
+  build:
+    - {{ compiler('c') }}
+
+to the requirements in the meta.yaml
