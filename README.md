@@ -13,7 +13,7 @@ Ultraplex is an all-in-one software package for processing and demultiplexing fa
 
 *Writes out files for each barcode (or barcode combination)
 
-Ultraplex was designed with speed and ease of use in mind. It is capable of demultiplexing an entire HiSeq lane, consisting of ~400 million reads, in just 20 minutes.
+Ultraplex was designed with speed and ease of use in mind. It is capable of demultiplexing an entire HiSeq lane, consisting of ~400 million reads, in just 20 minutes. It relies heavily on code from the excellent Cutadapt tool.
 
 # Should I use Ultraplex?
 
