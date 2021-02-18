@@ -31,7 +31,7 @@ if USE_CYTHON:
 # This call to setup() does all the work
 setup(
     name="ultraplex",
-    version="1.0.17",
+    version="1.1.0",
     description="fastq demultiplexer",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -56,7 +56,7 @@ setup(
     include_package_data=True,
      entry_points={
         "console_scripts": [
-            "ultraplex_frog = ultraplex.__main__:main", # main() of ultraplex/__main__.py
+            "ultraplex = ultraplex.__main__:main", # main() of ultraplex/__main__.py
         ]
     },
 )

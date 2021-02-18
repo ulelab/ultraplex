@@ -1,7 +1,0 @@
-2021-02-17 18:15:31,942 INFO     Namespace(inputfastq='/home/owiggle/Downloads/iCLIP_Musashi_hES-non-diff__hu_TCNNN_20090724_LUe7_2.fq.fixed.gz', barcodes='/home/owiggle/Downloads/ultraplex/tests/test_simple/barcodes_5_and_3.csv', directory='', fiveprimemismatches=1, threeprimemismatches=0, phredquality=30, threads=4, adapter='AGATCGGAAGAGCGGTTCAG', outputprefix='demux', sbatchcompression=False, ultra=False, ignore_space_warning=False, min_length=22, phredquality_5_prime=0, input_2='', adapter2='AGATCGGAAGAGCGTCGTG', min_trim=3)
-2021-02-17 18:15:45,036 INFO     1 million reads processed
-2021-02-17 18:15:55,235 INFO     Demultiplexing complete! 1847767 reads processed in 23.0 seconds
-2021-02-17 18:15:55,236 INFO     0 (0%) reads quality trimmed
-2021-02-17 18:15:55,236 INFO     649238 (35.1%) reads adaptor trimmed
-2021-02-17 18:15:55,236 INFO     9767 (0.529%) reads with correct 5' bc but 3' bc not found
-2021-02-17 18:15:55,236 INFO     10871 (0.588%) reads correctly assigned to sample files

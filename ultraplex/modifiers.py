@@ -8,7 +8,7 @@ from typing import Sequence, List, Optional
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 
-from qualtrim import quality_trim_index, nextseq_trim_index
+from qualtrim_new import quality_trim_index, nextseq_trim_index
 from ultraplex.adapters import MultiPrefixAdapter, MultiSuffixAdapter, Match, remainder
 from ultraplex.utils import reverse_complemented_sequence
 
