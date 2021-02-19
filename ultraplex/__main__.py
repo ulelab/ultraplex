@@ -934,7 +934,7 @@ def concatenate_files(save_name, ultra_mode,
     if ultra_mode:
         for this_type in all_types:
             # find all files with this barcode (or barcode combination)
-            filenames = glob.glob(this_type + '*')  # this type already has output directory
+            filenames = sorted(glob.glob(this_type + '*'))  # this type already has output directory
             # then concatenate
             command = ''
             for name in filenames:
@@ -975,7 +975,7 @@ def concatenate_files(save_name, ultra_mode,
     else:  # if not ultra_mode
         for this_type in all_types:
             # find all files with this barcode (or barcode combination)
-            filenames = glob.glob(this_type + '*')
+            filenames = sorted(glob.glob(this_type + '*'))
             # then concatenate
             command = ''
             for name in filenames:
