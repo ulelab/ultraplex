@@ -41,7 +41,7 @@ Then finally:
 
 Upgrading:
 
-For pip, just follow the instructions
+For pip, just follow the instructions above. Make sure to rename the version in the setup.py.
 
 Bioconda will automatically create a "bump" once it detects that there's a new version on pip.
 However, it will fail because the meta.yaml file created will be wrong. 
