@@ -27,7 +27,7 @@ Make the meta.yaml from the pip package
 
 1. cd recipes
 2. conda skeleton pypi ultraplex (maybe need "rm -r ultraplex/" first?)
-3. Add noarch: python to the build section of the meta.yaml file that's generated
+3. Add noarch: python to the build section of the meta.yaml file that's generated (not correct any more due to cython)
 4. git add ultraplex
 5. git commit
 6. git push (or maybe: git push --set-upstream origin ultraplex)
@@ -43,12 +43,62 @@ Upgrading:
 
 For pip, just follow the instructions
 
-For bioconda, merge to master, and it should automatically try to update. 
-In fact, it seems to look at pipy and automatically update based on that?
+Bioconda will automatically create a "bump" once it detects that there's a new version on pip.
+However, it will fail because the meta.yaml file created will be wrong. 
 
-Make sure you add 
+You'll want to:
+1. Go to the meta file
+2. change the meta file to something like the below, but ensure the correct version and sha key is listed (see below)
+3. request that this patch is added
+4. add comment "@bioconda bot request add label" or something (see instructions)
 
+
+working meta.yaml:
+
+{% set name = "ultraplex" %}
+{% set version = "1.1.2" %}
+
+package:
+  name: "{{ name|lower }}"
+  version: "{{ version }}"
+
+source:
+  url: "https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz"
+  sha256: a24e43d7698fe78a98c0ca4368ba66a5e377c7415b0b0b4e1b4789424d32954d
+
+
+build:
+  number: 0
+  script: "{{ PYTHON }} -m pip install . --no-deps -vv"
+  skip: True  # [py27]
+
+requirements:
   build:
     - {{ compiler('c') }}
+  host:
+    - pip
+    - python
+    - cython
+    - setuptools_scm
+  run:
+    - python
+    - xopen >=1.0.0
+    - dnaio >=0.5.0
+    - dataclasses >=0.7  # [py36]
+    - pigz
 
-to the requirements in the meta.yaml
+test:
+  imports:
+    - ultraplex
+  commands:
+    - ultraplex --help
+
+about:
+  home: "https://github.com/ulelab/ultraplex.git"
+  license: MIT
+  license_family: MIT
+  summary: "fastq demultiplexer"
+
+extra:
+  recipe-maintainers:
+    - Delayed-Gitification
