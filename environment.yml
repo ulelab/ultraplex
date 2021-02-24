@@ -34,4 +34,3 @@ dependencies:
   - xopen=1.1.0=py36h5fab9bb_1
   - xz=5.2.5=h516909a_1
   - zlib=1.2.11=h516909a_1010
-prefix: /camp/home/capitac/miniconda3/envs/ultra
