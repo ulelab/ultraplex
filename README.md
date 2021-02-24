@@ -21,6 +21,27 @@ Ultraplex is primarily designed for the demultiplexing of sequencing data genera
 
 # How do I use Ultraplex?
 
+
+## Installation
+
+# Conda
+
+Build an ultraplex environment straight from our yaml:
+```
+conda env create -f environment.yml
+```
+Or add ultraplex to your existing environment (note python >= 3.6 is required)
+```
+conda install -c conda-forge -c bioconda ultraplex
+```
+
+# Pip
+
+Ultraplex is also available from python package manager pip.
+```
+pip install ultraplex
+```
+
 ## Required inputs
 
 Ultraplex requires two inputs: a gzip-compressed fastq file, and a comma-separated file (csv) containing all the barcodes you have used. There are also multiple optional inputs, which are detailed below.
