@@ -3,15 +3,15 @@
 
 Ultraplex is an all-in-one software package for processing and demultiplexing fastq files. It performs the following processing steps:
 
-*Removes poor quality bases (normally from the 3' end only)
+- Removes poor quality bases (normally from the 3' end only)
 
-*Removes sequencing adaptors (eg Illumina universal sequencing adaptor)
+- Removes sequencing adaptors (eg Illumina universal sequencing adaptor)
 
-*Moves unique molecular identifiers (UMIs) to the read header for downstream deduplication
+- Moves unique molecular identifiers (UMIs) to the read header for downstream deduplication
 
-*Detects 5’ and (optionally) 3’ barcodes for (combinatorial) demultiplexing
+- Detects 5’ and (optionally) 3’ barcodes for (combinatorial) demultiplexing
 
-*Writes out files for each barcode (or barcode combination)
+- Writes out files for each barcode (or barcode combination)
 
 Ultraplex was designed with speed and ease of use in mind. It is capable of demultiplexing an entire HiSeq lane, consisting of ~400 million reads, in just 20 minutes. It relies heavily on code from the excellent Cutadapt tool.
 
