@@ -330,6 +330,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  linked_bcs,
                  three_p_trim_q,
                  min_length,
+                 final_min_length,
                  q5,
                  i2,
                  adapter2,
@@ -349,6 +350,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._adapter = adapter  # the 3' adapter
         self._min_length = min_length  # the minimum length of a read after quality and adapter trimming to include. Remember
         # that this needs to include the length of the barcodes and umis, so should be quite long eg 22 nt
+        self._final_min_length = final_min_length # length of final written reads
         self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcs"?
         self._save_name = save_name  # the name to save the output fastqs
         self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs)
@@ -751,18 +753,18 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
         with open(filename, append_write) as file:
             this_out = []
             for counter, read in enumerate(reads):
+                if len(read.sequence) >= self._final_min_length:
+                    # Quality control:
+                    assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
 
-                # Quality control:
-                assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-
-                if counter == 0:
-                    umi_l = len(read.name.split("rbc:")[1])
-                assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
-                ## combine into a single list
-                this_out.append("@" + read.name)
-                this_out.append(read.sequence)
-                this_out.append("+")
-                this_out.append(read.qualities)
+                    if counter == 0:
+                        umi_l = len(read.name.split("rbc:")[1])
+                    assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
+                    ## combine into a single list
+                    this_out.append("@" + read.name)
+                    this_out.append(read.sequence)
+                    this_out.append("+")
+                    this_out.append(read.qualities)
 
             output = '\n'.join(this_out) + '\n'
             # print(output)
@@ -858,7 +860,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, three_p_mismatches, linked_bcs, three_p_trim_q,
-                  ultra_mode, output_directory, min_length, q5, i2, adapter2, min_trim,
+                  ultra_mode, output_directory, min_length, final_min_length, q5, i2, adapter2, min_trim,
                   ignore_no_match):
     """
 	This function starts all the workers
@@ -898,6 +900,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                linked_bcs,
                                three_p_trim_q,
                                min_length,
+                               final_min_length,
                                q5=q5,
                                i2=i2,
                                adapter2=adapter2,
@@ -1213,7 +1216,10 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     # minimum length of read before trimming
     optional.add_argument('-l', '--min_length', type=int, default=22,
                           nargs='?', help=("minimum length of reads before any trimming takes place. Remember"
-                                           "that this must include UMIs and barcodes, so should be fairly long!"))
+                                           "that this must include UMIs and barcodes, so should be fairly long! ie. set to total barcode length"))
+    # minimum final length of read
+    optional.add_argument('-fl', '--final_min_length', type=int, default=20,
+                          nargs='?', help="minimum length of the final outputted reads")
     # start qc
     optional.add_argument("-q5", '--phredquality_5_prime', type=int, default=0,
                           nargs='?', help="quality trimming minimum score from 5' end - use with caution!")
@@ -1263,6 +1269,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     ultra_mode = args.ultra
     ignore_space_warning = args.ignore_space_warning
     min_length = args.min_length
+    final_min_length = args.final_min_length
     q5 = args.phredquality_5_prime
     i2 = args.input_2
     min_trim = args.min_trim
@@ -1313,6 +1320,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     ultra_mode,
                                                     output_directory,
                                                     min_length,
+                                                    final_min_length,
                                                     q5=q5,
                                                     i2=i2,
                                                     adapter2=adapter2,
