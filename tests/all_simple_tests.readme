@@ -1,1 +1,3 @@
 Run the all_simple_tests.sh from the parent folder - read comments in all_simple_tests.sh for instructions
+
+You may need to build ultraplex first - cd to the directory with setup.py, then run: python setup.py sdist bdist_wheel (activate conda env "twine")
