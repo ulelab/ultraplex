@@ -47,4 +47,14 @@ python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/rea
 # verify that mate adapter is correctly removed
 python3 ultraplex -i tests/test_simple/example_read_1.fastq.gz -i2 tests/test_simple/example_read_2.fastq.gz -b tests/test_simple/barcodes_3nt_bc_789.csv -d tests/test_simple/mate -o mate
 
+# verify that length filter works correctly
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -b tests/test_simple/barcodes_5_and_3.csv -d tests/test_simple/SE_length60 -o single_end_length60 -l 60
 
+# verify that length filter works correctly
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_5_and_3.csv -d tests/test_simple/PE_length60 -o paired_end_length60 -l 60
+
+# verify that short reads do not cause crash
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_5_and_3_very_long.csv -d tests/test_simple/PE_long -o paired_end_long
+
+# verify that short reads do not cause crash
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_5_and_3_very_long_barcode.csv -d tests/test_simple/PE_long_barcode -o paired_end_long_barcode

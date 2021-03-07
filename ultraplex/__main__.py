@@ -252,33 +252,45 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
     seq_length = len(sequence)
     positions_to_extract = [x+seq_length for x in non_N_poses]
 
-    bc = ''.join(sequence[a] for a in positions_to_extract)
-
-    assigned = d[bc]
-
-    if reverse_complement: # the sequence that will be removed
-        to_remove = read.sequence[0:len(assigned)]
-    else:
-        # then it's not paired end, so we don't care
-        to_remove = None
-
     umi = ""  # initialise
 
-    if not assigned == "no_match": # ie there is a match - then we need to trim
-        bc_length = len(assigned)
-        # add to umi
-        umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
-        umi_positions_to_extract = [x + seq_length for x in umi_poses]
-        umi = ''.join(sequence[a] for a in umi_positions_to_extract)
-        length = len(assigned)
-        sequence = sequence[0:(len(read) - length)]
-        qualities = qualities[0:(len(read.qualities) - length)]
+    if min(positions_to_extract) >= 0:  # ensure long enough
 
-        if add_umi:
-            if "rbc:" in read.name:
-                read.name = read.name + umi
-            else:
-                read.name = read.name + "rbc:" + umi
+        bc = ''.join(sequence[a] for a in positions_to_extract)
+
+        assigned = d[bc]
+
+        if reverse_complement: # the sequence that will be removed
+            to_remove = read.sequence[0:len(assigned)]
+        else:
+            # then it's not paired end, so we don't care
+            to_remove = None
+
+        if not assigned == "no_match": # ie there is a match - then we need to trim
+            bc_length = len(assigned)
+            # add to umi
+            umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
+            umi_positions_to_extract = [x + seq_length for x in umi_poses]
+
+            if min(umi_positions_to_extract) >= 0:  # ensure long enough to contain umi
+
+                umi = ''.join(sequence[a] for a in umi_positions_to_extract)
+                length = len(assigned)
+                sequence = sequence[0:(len(read) - length)]
+                qualities = qualities[0:(len(read.qualities) - length)]
+
+            else:  # barcode assigned, but read too short to contain full umi
+                assigned = "no_match"
+
+    else:  # read was too short for barcode to be extracted
+        assigned = "no_match"
+        to_remove = None
+
+    if add_umi:
+        if "rbc:" in read.name:
+            read.name = read.name + umi
+        else:
+            read.name = read.name + "rbc:" + umi
 
     if reverse_complement:
         # spin back round
@@ -329,12 +341,12 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  min_score_5_p, three_p_mismatches,
                  linked_bcs,
                  three_p_trim_q,
-                 min_length,
                  q5,
                  i2,
                  adapter2,
                  min_trim,
-                 ignore_no_match):
+                 ignore_no_match,
+                 final_min_length):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -347,8 +359,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._total_reads_adaptor_trimmed = total_reads_adaptor_trimmed  # a queue which keeps track of the total number of reads adaptor trimmed
         self._total_reads_5p_no_3p = total_reads_5p_no_3p  # a queue which keeps track of how many reads have correct 5p BC but cannot find 3p BC
         self._adapter = adapter  # the 3' adapter
-        self._min_length = min_length  # the minimum length of a read after quality and adapter trimming to include. Remember
-        # that this needs to include the length of the barcodes and umis, so should be quite long eg 22 nt
+        self._final_min_length = final_min_length # length of final written reads
         self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcs"?
         self._save_name = save_name  # the name to save the output fastqs
         self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs)
@@ -436,61 +447,62 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                                     reads_quality_trimmed,
                                                                                                     reads_adaptor_trimmed)
 
-                    if len(read.sequence) > self._min_length:
-                        # /# demultiplex at the 5' end ###
-                        read.name = read.name.replace(" ", "").replace("/", "").replace("\\",
-                                                                                        "")  # remove bad characters
+                    # /# demultiplex at the 5' end ###
+                    read.name = read.name.replace(" ", "").replace("/", "").replace("\\",
+                                                                                    "")  # remove bad characters
 
-                        read, five_p_bc, umi, to_remove = five_p_demulti(read,
-                                                                         self._five_p_barcodes_pos,
-                                                                         self._five_p_umi_poses,
-                                                                         self._five_p_bc_dict,
-                                                                         add_umi=True)
+                    read, five_p_bc, umi, to_remove = five_p_demulti(read,
+                                                                     self._five_p_barcodes_pos,
+                                                                     self._five_p_umi_poses,
+                                                                     self._five_p_bc_dict,
+                                                                     add_umi=True)
 
-                        # /# demultiplex at the 3' end
-                        # First, check if this 5' barcode has any 3' barcodes
+                    # /# demultiplex at the 3' end
+                    # First, check if this 5' barcode has any 3' barcodes
+                    try:
+                        linked = self._linked_bcs[five_p_bc]
+                    except:
+                        linked = "_none_"
+
+                    if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
+                        comb_bc = '_5bc_' + five_p_bc
+
+                        if len(read) >= self._final_min_length:
+                            try:
+                                this_buffer_dict[comb_bc].append(read)
+                            except KeyError:
+                                this_buffer_dict[comb_bc] = [read]
+
+                        if not five_p_bc == "no_match":
+                            assigned_reads += 1
+
+                    elif min_trimmed:  # if it is linked to 3' barcodes and has been trimmed
+                        read, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read,
+                                                                                   self._three_p_bc_dict_of_dicts[
+                                                                                       five_p_bc],
+                                                                                   add_umi=True,
+                                                                               linked_bcds=self._linked_bcs[five_p_bc])
+
+                        if not three_p_bc == "no_match":
+                            assigned_reads += 1
+
+                        if three_p_bc == "no_match":
+                            five_no_three_reads += 1
+
+                        comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
+
+                        if len(read) >= self._final_min_length:
+                            try:
+                                this_buffer_dict[comb_bc].append(read)
+                            except KeyError:
+                                this_buffer_dict[comb_bc] = [read]
+
+                    else:  # linked to 3' barcode but wasn't trimmed so can't assign
+                        comb_bc = '_5bc_' + five_p_bc + '_3bc_' + 'no_match'
                         try:
-                            linked = self._linked_bcs[five_p_bc]
-                        except:
-                            linked = "_none_"
-
-                        if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
-                            comb_bc = '_5bc_' + five_p_bc
-
-                            try:
-                                this_buffer_dict[comb_bc].append(read)
-                            except:
-                                this_buffer_dict[comb_bc] = [read]
-
-                            if not five_p_bc == "no_match":
-                                assigned_reads += 1
-
-                        elif min_trimmed:  # if it is linked to 3' barcodes and has been trimmed
-                            read, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read,
-                                                                                       self._three_p_bc_dict_of_dicts[
-                                                                                           five_p_bc],
-                                                                                       add_umi=True,
-                                                                                   linked_bcds=self._linked_bcs[five_p_bc])
-
-                            if not three_p_bc == "no_match":
-                                assigned_reads += 1
-
-                            if three_p_bc == "no_match":
-                                five_no_three_reads += 1
-
-                            comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
-
-                            try:
-                                this_buffer_dict[comb_bc].append(read)
-                            except:
-                                this_buffer_dict[comb_bc] = [read]
-
-                        else:  # linked to 3' barcode but wasn't trimmed so can't assign
-                            comb_bc = '_5bc_' + five_p_bc + '_3bc_' + 'no_match'
-                            try:
-                                this_buffer_dict[comb_bc].append(read)
-                            except:
-                                this_buffer_dict[comb_bc] = [read]
+                            this_buffer_dict[comb_bc].append(read)
+                        except KeyError:
+                            this_buffer_dict[comb_bc] = [read]
 
                 ## Write out! ##
                 for demulti_type, reads in this_buffer_dict.items():
@@ -558,92 +570,93 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                              reads_quality_trimmed,
                                                                              reads_adaptor_trimmed)
 
-                    if len(read1.sequence) > self._min_length and len(read2.sequence) > self._min_length:
-                        # /# demultiplex at the 5' end ###
-                        read1.name = read1.name.replace(" ", "").replace("/", "").replace("\\",
-                                                                                          "")  # remove bad characters
-                        read2.name = read2.name.replace(" ", "").replace("/", "").replace("\\",
-                                                                                          "")  # remove bad characters
+                    # /# demultiplex at the 5' end ###
+                    read1.name = read1.name.replace(" ", "").replace("/", "").replace("\\",
+                                                                                      "")  # remove bad characters
+                    read2.name = read2.name.replace(" ", "").replace("/", "").replace("\\",
+                                                                                      "")  # remove bad characters
 
-                        # demultiplex based on 5' end
-                        read1, five_p_bc, umi, to_remove_5 = five_p_demulti(read1,
-                                                                            self._five_p_barcodes_pos,
-                                                                            self._five_p_umi_poses,
-                                                                            self._five_p_bc_dict,
-                                                                            add_umi=False)
+                    # demultiplex based on 5' end
+                    read1, five_p_bc, umi, to_remove_5 = five_p_demulti(read1,
+                                                                        self._five_p_barcodes_pos,
+                                                                        self._five_p_umi_poses,
+                                                                        self._five_p_bc_dict,
+                                                                        add_umi=False)
 
-                        # add the 5' umi to each
-                        for read in [read1, read2]:
-                            if not "rbc:" in read.name:
-                                read.name = read.name + "rbc:" + umi
-                            else:  # if rbc is already there
-                                read.name = read.name + umi
+                    # add the 5' umi to each
+                    for read in [read1, read2]:
+                        if not "rbc:" in read.name:
+                            read.name = read.name + "rbc:" + umi
+                        else:  # if rbc is already there
+                            read.name = read.name + umi
 
-                        # /# demultiplex at the 3' end
-                        # First, check if this 5' barcode has any 3' barcodes
-                        try:
-                            linked = self._linked_bcs[five_p_bc]
-                        except:
-                            linked = "_none_"
+                    # /# demultiplex at the 3' end
+                    # First, check if this 5' barcode has any 3' barcodes
+                    try:
+                        linked = self._linked_bcs[five_p_bc]
+                    except:
+                        linked = "_none_"
 
-                        if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
-                            comb_bc = '_5bc_' + five_p_bc
+                    if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
+                        comb_bc = '_5bc_' + five_p_bc
 
-                            # remove the 5' barcoded adapter from reverse read
-                            read2 = remove_mate_adapter(read=read2,
-                                                        to_remove=to_remove_5,
-                                                        bcd=five_p_bc,
-                                                        trimmed=trimmed2)
+                        # remove the 5' barcoded adapter from reverse read
+                        read2 = remove_mate_adapter(read=read2,
+                                                    to_remove=to_remove_5,
+                                                    bcd=five_p_bc,
+                                                    trimmed=trimmed2)
 
+                        if len(read1) >= self._final_min_length and len(read2) >= self._final_min_length:
                             try:
                                 this_buffer_dict_1[comb_bc].append(read1)
                                 this_buffer_dict_2[comb_bc].append(read2)
-                            except:
+                            except KeyError:
                                 this_buffer_dict_1[comb_bc] = [read1]
                                 this_buffer_dict_2[comb_bc] = [read2]
 
-                            if not five_p_bc == "no_match":
-                                assigned_reads += 1
+                        if not five_p_bc == "no_match":
+                            assigned_reads += 1
 
-                        else:  # if there's a linked 3' barcode, no need to check if trimmed b/c P.E.
-                            read2, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read2,
-                                                                                        self._three_p_bc_dict_of_dicts[
-                                                                                            five_p_bc],
-                                                                                        add_umi=False,
-                                                                                        linked_bcds=self._linked_bcs[
-                                                                                            five_p_bc],
-                                                                                        reverse_complement=True)
+                    else:  # if there's a linked 3' barcode, no need to check if trimmed b/c P.E.
+                        read2, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read2,
+                                                                                    self._three_p_bc_dict_of_dicts[
+                                                                                        five_p_bc],
+                                                                                    add_umi=False,
+                                                                                    linked_bcds=self._linked_bcs[
+                                                                                        five_p_bc],
+                                                                                    reverse_complement=True)
 
-                            # add the second umi
-                            for read in [read1, read2]:
-                                if not "rbc:" in read.name:
-                                    read.name = read.name + "rbc:" + umi_3
-                                else:  # if rbc is already there
-                                    read.name = read.name + umi_3
+                        # add the second umi
+                        for read in [read1, read2]:
+                            if not "rbc:" in read.name:
+                                read.name = read.name + "rbc:" + umi_3
+                            else:  # if rbc is already there
+                                read.name = read.name + umi_3
 
-                            # remove the 5' bcded adapter from the reverse read
-                            read2 = remove_mate_adapter(read=read2,
-                                                        to_remove=to_remove_5,
-                                                        bcd=five_p_bc,
-                                                        trimmed=trimmed2)
-                            # remove the 3' adapter from the forward read
-                            read1 = remove_mate_adapter(read=read1,
-                                                        to_remove=to_remove_3,
-                                                        bcd=three_p_bc,
-                                                        trimmed=trimmed1)
+                        # remove the 5' bcded adapter from the reverse read
+                        read2 = remove_mate_adapter(read=read2,
+                                                    to_remove=to_remove_5,
+                                                    bcd=five_p_bc,
+                                                    trimmed=trimmed2)
+                        # remove the 3' adapter from the forward read
+                        read1 = remove_mate_adapter(read=read1,
+                                                    to_remove=to_remove_3,
+                                                    bcd=three_p_bc,
+                                                    trimmed=trimmed1)
 
-                            if not three_p_bc == "no_match":
-                                assigned_reads += 1
+                        if not three_p_bc == "no_match":
+                            assigned_reads += 1
 
-                            if three_p_bc == "no_match":
-                                five_no_three_reads += 1
+                        if three_p_bc == "no_match":
+                            five_no_three_reads += 1
 
-                            comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
+                        comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
 
+                        if len(read1) >= self._final_min_length and len(read2) >= self._final_min_length:
                             try:
                                 this_buffer_dict_1[comb_bc].append(read1)
                                 this_buffer_dict_2[comb_bc].append(read2)
-                            except:
+                            except KeyError:
                                 this_buffer_dict_1[comb_bc] = [read1]
                                 this_buffer_dict_2[comb_bc] = [read2]
 
@@ -751,7 +764,6 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
         with open(filename, append_write) as file:
             this_out = []
             for counter, read in enumerate(reads):
-
                 # Quality control:
                 assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
 
@@ -802,12 +814,10 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
                    five_p_bc_dict, add_umi):
     """
-	this function demultiplexes on the 5' end
-	"""
-
-    # /# find 5' umi
-    this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
-    winner = five_p_bc_dict[this_bc_seq]
+    this function demultiplexes on the 5' end
+    """
+    sequence_length = len(read.sequence)
+    this_five_p_umi = ""
 
     # check if "rbc:" already in header
     if "rbc:" in read.name:
@@ -815,23 +825,36 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
     else:  # if not
         to_add = "rbc:"
 
-    # store what sequence will be removed
-    to_remove = read.sequence[0:len(winner)]
+    if sequence_length > max(five_p_bc_pos):
+        # find best barcode match
+        this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
+        winner = five_p_bc_dict[this_bc_seq]
 
-    this_five_p_umi = ""
-    if not winner == "no_match":
-        # /# find umi sequence
-        this_five_p_umi = ''.join([read.sequence[i] for i in five_p_umi_poses[winner]])
+        # store what sequence will be removed
+        if sequence_length < len(winner):
+            winner = "no_match"
+            to_remove = ""
+        else:
+            to_remove = read.sequence[0:len(winner)]
 
-        # /# update read and read header
-        read.sequence = read.sequence[len(winner):]
-        read.qualities = read.qualities[len(winner):]
+        if not winner == "no_match":
+            # /# find umi sequence
+            this_five_p_umi = ''.join([read.sequence[i] for i in five_p_umi_poses[winner]])
 
-        if add_umi:
-            # to read header add umi and 5' barcode info
-            read.name = (read.name.replace(" ", "") + to_add + this_five_p_umi)
-    else:
+            # /# update read and read header
+            read.sequence = read.sequence[len(winner):]
+            read.qualities = read.qualities[len(winner):]
+
+            if add_umi:
+                # to read header add umi and 5' barcode info
+                read.name = (read.name.replace(" ", "") + to_add + this_five_p_umi)
+        else: # if no match
+            read.name = read.name + to_add
+
+    else:  # if read was too short to assign
+        winner = "no_match"
         read.name = read.name + to_add
+        to_remove = ""
 
     return read, winner, this_five_p_umi, to_remove
 
@@ -858,7 +881,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, three_p_mismatches, linked_bcs, three_p_trim_q,
-                  ultra_mode, output_directory, min_length, q5, i2, adapter2, min_trim,
+                  ultra_mode, output_directory, final_min_length, q5, i2, adapter2, min_trim,
                   ignore_no_match):
     """
 	This function starts all the workers
@@ -879,30 +902,30 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
         all_conn_r.append(conn_r)
         all_conn_w.append(conn_w)
 
-        worker = WorkerProcess(index,
-                               conn_r,  # this is the "read_pipe"
-                               need_work_queue,  # worker tells the reader it needs work
-                               adapter,  # the 3' adapter to trim
-                               output_directory,
-                               five_p_bcs,
-                               three_p_bcs,
-                               save_name,
-                               total_demultiplexed,
-                               total_reads_assigned,
-                               total_reads_qtrimmed,
-                               total_reads_adaptor_trimmed,
-                               total_reads_5p_no_3p,
-                               ultra_mode,
-                               min_score_5_p,
-                               three_p_mismatches,
-                               linked_bcs,
-                               three_p_trim_q,
-                               min_length,
+        worker = WorkerProcess(index=index,
+                               read_pipe=conn_r,  # this is the "read_pipe"
+                               need_work_queue=need_work_queue,  # worker tells the reader it needs work
+                               adapter=adapter,  # the 3' adapter to trim
+                               output_directory=output_directory,
+                               five_p_bcs=five_p_bcs,
+                               three_p_bcs=three_p_bcs,
+                               save_name=save_name,
+                               total_demultiplexed=total_demultiplexed,
+                               total_reads_assigned=total_reads_assigned,
+                               total_reads_qtrimmed=total_reads_qtrimmed,
+                               total_reads_adaptor_trimmed=total_reads_adaptor_trimmed,
+                               total_reads_5p_no_3p=total_reads_5p_no_3p,
+                               ultra_mode=ultra_mode,
+                               min_score_5_p=min_score_5_p,
+                               three_p_mismatches=three_p_mismatches,
+                               linked_bcs=linked_bcs,
+                               three_p_trim_q=three_p_trim_q,
                                q5=q5,
                                i2=i2,
                                adapter2=adapter2,
                                min_trim = min_trim,
-                               ignore_no_match=ignore_no_match)
+                               ignore_no_match=ignore_no_match,
+                               final_min_length=final_min_length)
 
         worker.start()
         workers.append(worker)
@@ -1210,10 +1233,9 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     # free space ignore warning
     optional.add_argument('-ig', "--ignore_space_warning", action='store_true', default=False,
                           help='whether to ignore warnings that there is not enough free space')
-    # minimum length of read before trimming
-    optional.add_argument('-l', '--min_length', type=int, default=22,
-                          nargs='?', help=("minimum length of reads before any trimming takes place. Remember"
-                                           "that this must include UMIs and barcodes, so should be fairly long!"))
+    # minimum final length of read
+    optional.add_argument('-l', '--final_min_length', type=int, default=20,
+                          nargs='?', help="minimum length of the final outputted reads")
     # start qc
     optional.add_argument("-q5", '--phredquality_5_prime', type=int, default=0,
                           nargs='?', help="quality trimming minimum score from 5' end - use with caution!")
@@ -1262,7 +1284,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     sbatch_compression = args.sbatchcompression
     ultra_mode = args.ultra
     ignore_space_warning = args.ignore_space_warning
-    min_length = args.min_length
+    final_min_length = args.final_min_length
     q5 = args.phredquality_5_prime
     i2 = args.input_2
     min_trim = args.min_trim
@@ -1302,22 +1324,30 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     total_reads_5p_no_3p = Queue()
 
     # /# make a bunch of workers
-    workers, all_conn_r, all_conn_w = start_workers(threads,
-                                                    file_name, need_work_queue,
-                                                    adapter, five_p_bcs,
-                                                    three_p_bcs, save_name,
-                                                    total_demultiplexed, total_reads_assigned, total_reads_qtrimmed,
-                                                    total_reads_adaptor_trimmed, total_reads_5p_no_3p,
-                                                    min_score_5_p, three_p_mismatches,
-                                                    linked_bcs, three_p_trim_q,
-                                                    ultra_mode,
-                                                    output_directory,
-                                                    min_length,
+    workers, all_conn_r, all_conn_w = start_workers(n_workers=threads,
+                                                    input_file=file_name, 
+                                                    need_work_queue=need_work_queue,
+                                                    adapter=adapter, 
+                                                    five_p_bcs=five_p_bcs,
+                                                    three_p_bcs=three_p_bcs, 
+                                                    save_name=save_name,
+                                                    total_demultiplexed=total_demultiplexed, 
+                                                    total_reads_assigned=total_reads_assigned, 
+                                                    total_reads_qtrimmed=total_reads_qtrimmed,
+                                                    total_reads_adaptor_trimmed=total_reads_adaptor_trimmed, 
+                                                    total_reads_5p_no_3p=total_reads_5p_no_3p,
+                                                    min_score_5_p=min_score_5_p, 
+                                                    three_p_mismatches=three_p_mismatches,
+                                                    linked_bcs=linked_bcs, 
+                                                    three_p_trim_q=three_p_trim_q,
+                                                    ultra_mode=ultra_mode,
+                                                    output_directory=output_directory,
                                                     q5=q5,
                                                     i2=i2,
                                                     adapter2=adapter2,
                                                     min_trim = min_trim,
-                                                    ignore_no_match=ignore_no_match)
+                                                    ignore_no_match=ignore_no_match,
+                                                    final_min_length=final_min_length)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
