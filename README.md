@@ -156,8 +156,9 @@ These are two optional running modes that can increase the speed of the program.
 Larger performance gains from ultra mode are seen when it is used in conjunction with sbatch compression mode. This mode is only compatible with high performance computing clusters which have SLURM job management. After temporary files are concatenated, they are compressed using sbatch commands, thus enabling the compression workload to be spread across multiple nodes of a supercomputing cluster. Using ultra mode and sbatch compression mode together may double overall performance. Sbatch compression mode is only relevant when using ultra mode.
 
 ### Minimum length (-l, --min_length):
-This is the minimum length of a read, before trimming and demultiplexing. By default this is set to 22. Note that if large barcodes are used, or tandem barcodes, it may be necessary to set this to an even larger value to avoid zero-length reads.
-Minimum trim for single-end 3’ demultiplexing (-mt, --min_trim):
+NOTE - THIS HAS BEEN UPDATED. This option gives the minimum length of the read after the barcode(s) and UMI(s) have been removed. For paired end, both must be at least this length for the pair of reads to be written. It is no longer necessary to specify a minimum length of at least the length of your longest adaptor.
+
+### Minimum trim for single-end 3’ demultiplexing (-mt, --min_trim):
 When demultiplexing using 3’ adapters using the forward read (i.e. when single-end sequencing has been used), it is possible to obtain spurious barcode matches from the sequence at the 3’ end of the read if this is not the true end of the insert (i.e. it is not adjacent to the sequencing adaptor). To prevent this, this option ensures that at least N bases of the sequencing adapter (specified by option -a) have been detected and trimmed. By default its value is 3.
 
 ### Output file prefix (-o, --outputprefix):
