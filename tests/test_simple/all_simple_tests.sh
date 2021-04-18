@@ -58,3 +58,6 @@ python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/rea
 
 # verify that short reads do not cause crash
 python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_5_and_3_very_long_barcode.csv -d tests/test_simple/PE_long_barcode -o paired_end_long_barcode
+
+# check it works without UMIs
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_no_umi_3.csv -d tests/test_simple/no_umi -o paired_no_umi
