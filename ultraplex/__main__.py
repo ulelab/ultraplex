@@ -272,13 +272,19 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
             umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
             umi_positions_to_extract = [x + seq_length for x in umi_poses]
 
-            if min(umi_positions_to_extract) >= 0:  # ensure long enough to contain umi
+            # check it's long enough to contain UMIs, or that there are no UMIs
+            long_enough = False  # assume false
+            if len(umi_poses) > 0:
+                if min(umi_positions_to_extract) >= 0:
+                    long_enough = True
+            if len(umi_poses) == 0:
+                long_enough = True
 
+            if long_enough:
                 umi = ''.join(sequence[a] for a in umi_positions_to_extract)
                 length = len(assigned)
                 sequence = sequence[0:(len(read) - length)]
                 qualities = qualities[0:(len(read.qualities) - length)]
-
             else:  # barcode assigned, but read too short to contain full umi
                 assigned = "no_match"
 
@@ -831,7 +837,7 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
         winner = five_p_bc_dict[this_bc_seq]
 
         # store what sequence will be removed
-        if sequence_length < len(winner):
+        if sequence_length < len(winner):  # read is too short to contain barcode
             winner = "no_match"
             to_remove = ""
         else:
@@ -848,7 +854,7 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
             if add_umi:
                 # to read header add umi and 5' barcode info
                 read.name = (read.name.replace(" ", "") + to_add + this_five_p_umi)
-        else: # if no match
+        else:  # if no match
             read.name = read.name + to_add
 
     else:  # if read was too short to assign
