@@ -26,70 +26,84 @@ def round_sig(x, sig=2):
     return to_return
 
 
-def make_5p_bc_dict(barcodes, min_score):
+def make_5p_bc_dict(barcodes, min_score, dont_build_reference):
     """
 	this function generates a dictionary that matches each possible sequence
 	from the read with the best 5' barcode
 	"""
-    first_bc = barcodes[0]
-    seq_length = len(first_bc.replace("N", ""))
+    if dont_build_reference:
+        return {"dont_build":True}
+    else:
+        first_bc = barcodes[0]
+        seq_length = len(first_bc.replace("N", ""))
 
-    # check all the barcodes are the same length (ignoring UMIs)
-    for bc in barcodes:
-        assert len(bc.replace("N", "")) == seq_length, "Your experimental barcodes are different lengths."
+        # check all the barcodes are the same length (ignoring UMIs)
+        for bc in barcodes:
+            assert len(bc.replace("N", "")) == seq_length, "Your experimental barcodes are different lengths."
 
-    seqs = make_all_seqs(seq_length)
+        seqs = make_all_seqs(seq_length)
 
-    # trim sequences to desired length
-    # create dictionary
-    barcode_dictionary = {}
+        # trim sequences to desired length
+        # create dictionary
+        barcode_dictionary = {}
 
-    for seq in seqs:
-        barcode_dictionary[seq] = score_barcode_for_dict(seq, barcodes, min_score)
+        for seq in seqs:
+            barcode_dictionary[seq] = score_barcode_for_dict(seq, barcodes, min_score)
 
-    return barcode_dictionary
+        return barcode_dictionary
 
 
-def score_barcode_for_dict(seq, barcodes, min_score):
+
+def remove_Ns_from_barcodes(barcodes):
+    barcodes_no_N = []
+        for i in range(len(barcodes)):
+            this_bc = barcodes[i]
+            barcodes_no_N.append(this_bc.replace("N", ""))
+    return barcodes_no_N
+
+
+def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed = False):
     """
 	this function scores a given sequence against all the barcodes
 	it's used for the 5' barcode only
 	"""
 
     # first, remove Ns from barcode list
-    barcodes_no_N = []
-    for i in range(len(barcodes)):
-        this_bc = barcodes[i]
-        barcodes_no_N.append(this_bc.replace("N", ""))
-
-    # Now, score the sequence
-    score_list = []
-
-    for this_bc in barcodes_no_N:
-        # find length of this barcode
-        this_bc_l = len(this_bc)
-
-        # score the barcode against the read, penalty for N in the read
-        score = sum(a == b for a, b in zip(this_bc, seq))
-
-        # append to score list
-        score_list.append(score)
-
-    # Find the best score
-    best_score = max(score_list)
-
-    if best_score < min_score:
-        winner = "no_match"
+    if Ns_removed:
+        barcodes_no_N = barcodes
     else:
-        # check that there is only one barcode with the max score
-        winner_indicies = [i for i in range(len(score_list)) if score_list[i] == best_score]
+        barcodes_no_N = remove_Ns_from_barcodes(barcodes)
 
-        if len(winner_indicies) > 1:
+    if seq in barcodes_no_N:  # no need to check all barcodes
+        winner = seq
+    elif min_score == len(barcodes_no_N):  # i.e. no matches allowed, and seq not in barcodes
+        winner = "no_match"
+    else:  # mismatches allowed so need to check
+        # Now, score the sequence
+        score_list = []
+
+        for this_bc in barcodes_no_N:
+            # score the barcode against the read, penalty for N in the read
+            score = sum(a == b for a, b in zip(this_bc, seq))
+
+            # append to score list
+            score_list.append(score)
+
+        # Find the best score
+        best_score = max(score_list)
+
+        if best_score < min_score:
             winner = "no_match"
-        else:  # if there is only one
-            winner = barcodes[winner_indicies[0]]
+        else:
+            # check that there is only one barcode with the max score
+            winner_indicies = [i for i in range(len(score_list)) if score_list[i] == best_score]
 
-    return (winner)
+            if len(winner_indicies) > 1:
+                winner = "no_match"
+            else:  # if there is only one
+                winner = barcodes[winner_indicies[0]]
+
+    return winner
 
 
 class ReaderProcess(Process):
@@ -180,24 +194,21 @@ def make_3p_bc_dict(bcs, min_score):
     all_seqs = make_all_seqs(bcl)
     three_p_match_d = {}
     for seq in all_seqs:
-        # assume no match
-        three_p_match_d[seq] = "no_match"
         # now check if there actually is a match
-        correct_bcs = []
-
-        for bc in bcs:
-
-            # remove Ns
-            bc_no_N = bc.replace("N", "")
-
-            score = sum(a == b for a, b in zip(bc_no_N, seq))
-
-            if score >= min_score:
-                correct_bcs.append(bc)
-
-        if len(correct_bcs) == 1:
-            three_p_match_d[seq] = correct_bcs[0]
+        three_p_match_d[seq] = score_barcode_for_dict(seq, bcs, min_score)
     return three_p_match_d
+
+
+# def score_3p_bc(seq, bcds, min_score):
+#     correct_bcs = {}
+#     for bc in bcs:
+#         # remove Ns
+#         bc_no_N = bc.replace("N", "")
+#         score = sum(a == b for a, b in zip(bc_no_N, seq))
+#         if score >= min_score:
+#             correct_bcs[bc: score]
+#     max_score = max(correct_bcs.values())
+#     final_bc = [a for ]
 
 
 def make_all_seqs(l):
@@ -258,7 +269,10 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
 
         bc = ''.join(sequence[a] for a in positions_to_extract)
 
-        assigned = d[bc]
+        if "dont_build" == d:
+            assigned = 
+        else:
+            assigned = d[bc]
 
         if reverse_complement: # the sequence that will be removed
             to_remove = read.sequence[0:len(assigned)]
@@ -309,20 +323,25 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
     return read, assigned, umi, to_remove
 
 # TODO link three_p_mismatches to input
-def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches):
+def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches, dont_build_reference):
     """
 	this function makes a different dictionary for each 5' barcode
 	it also checks that they're all the same length
 	"""
-    d = {}
-    for five_p_bc, three_p_bcs in linked_bcs.items():
-        if len(three_p_bcs) > 0:  # ie this 5' barcode has 3' barcodes
-            # check they're consistent
-            check_N_position(three_p_bcs, "3")
-            # work out the min score - only do first one because already checked they're consistent
-            min_score = len([a for a, b in enumerate(three_p_bcs[0]) if b != "N"]) - three_p_mismatches
-            this_dict = make_3p_bc_dict(three_p_bcs, min_score)
-            d[five_p_bc] = this_dict
+    if dont_build_reference:
+        d = {}
+        for five_p_bc in linked_bcs.items():
+            d[five_p_bc] = "dont_build"
+    else:
+        d = {}
+        for five_p_bc, three_p_bcs in linked_bcs.items():
+            if len(three_p_bcs) > 0:  # ie this 5' barcode has 3' barcodes
+                # check they're consistent
+                check_N_position(three_p_bcs, "3")
+                # work out the min score - only do first one because already checked they're consistent
+                min_score = len([a for a, b in enumerate(three_p_bcs[0]) if b != "N"]) - three_p_mismatches
+                this_dict = make_3p_bc_dict(three_p_bcs, min_score)
+                d[five_p_bc] = this_dict
 
     return d
 
@@ -352,7 +371,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  adapter2,
                  min_trim,
                  ignore_no_match,
-                 final_min_length):
+                 final_min_length,
+                 dont_build_reference):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -369,10 +389,10 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcs"?
         self._save_name = save_name  # the name to save the output fastqs
         self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs)
-        self._five_p_bc_dict = make_5p_bc_dict(five_p_bcs, min_score_5_p)
+        self._five_p_bc_dict = make_5p_bc_dict(five_p_bcs, min_score_5_p, dont_build_reference)
         self._min_score_5_p = min_score_5_p  #
         self._linked_bcs = linked_bcs  # which 3' barcodes each 5' bc is linked - a dictionary
-        self._three_p_bc_dict_of_dicts = make_dict_of_3p_bc_dicts(self._linked_bcs, three_p_mismatches)  # a dict of dicts - each 5' barcodes has
+        self._three_p_bc_dict_of_dicts = make_dict_of_3p_bc_dicts(self._linked_bcs, three_p_mismatches, dont_build_reference)  # a dict of dicts - each 5' barcodes has
         # a dict of which 3' barcode matches the given sequence, which is also a dict
         self._ultra_mode = ultra_mode
         self._output_directory = output_directory
@@ -461,7 +481,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                      self._five_p_barcodes_pos,
                                                                      self._five_p_umi_poses,
                                                                      self._five_p_bc_dict,
-                                                                     add_umi=True)
+                                                                     add_umi=True,
+                                                                     self._five_p_bc,
+                                                                     self._min_score_5_p)
 
                     # /# demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
@@ -587,7 +609,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                         self._five_p_barcodes_pos,
                                                                         self._five_p_umi_poses,
                                                                         self._five_p_bc_dict,
-                                                                        add_umi=False)
+                                                                        add_umi=False,
+                                                                     self._five_p_bc,
+                                                                     self._min_score_5_p)
 
                     # add the 5' umi to each
                     for read in [read1, read2]:
@@ -818,7 +842,7 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
 
 def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
-                   five_p_bc_dict, add_umi):
+                   five_p_bc_dict, add_umi, barcodes=[], min_score=0):
     """
     this function demultiplexes on the 5' end
     """
@@ -834,7 +858,11 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
     if sequence_length > max(five_p_bc_pos):
         # find best barcode match
         this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
-        winner = five_p_bc_dict[this_bc_seq]
+
+        if "dont_build" in five_p_bc_dict:
+            winner = score_barcode_for_dict(this_bc_seq, barcodes, min_score)
+        else:
+            winner = five_p_bc_dict[this_bc_seq]
 
         # store what sequence will be removed
         if sequence_length < len(winner):  # read is too short to contain barcode
@@ -888,7 +916,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, three_p_mismatches, linked_bcs, three_p_trim_q,
                   ultra_mode, output_directory, final_min_length, q5, i2, adapter2, min_trim,
-                  ignore_no_match):
+                  ignore_no_match, dont_build_reference):
     """
 	This function starts all the workers
 	"""
@@ -931,7 +959,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                adapter2=adapter2,
                                min_trim = min_trim,
                                ignore_no_match=ignore_no_match,
-                               final_min_length=final_min_length)
+                               final_min_length=final_min_length,
+                               dont_build_reference=dont_build_reference)
 
         worker.start()
         workers.append(worker)
@@ -1257,6 +1286,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
           "barcode to be detected. Default = 3"))
     optional.add_argument("-inm", "--ignore_no_match", action="store_true", default=False,
         help="Do not write reads for which there is no match.")
+    optional.add_argument("-dbr", "--dont_build_reference", default=False, action="store_true",
+        help="Skip the reference building step - for long barcodes this will improve speed.")
 
     parser._action_groups.append(optional)
     args = parser.parse_args()
@@ -1295,6 +1326,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     i2 = args.input_2
     min_trim = args.min_trim
     ignore_no_match = args.ignore_no_match
+    dont_build_reference = args.dont_build_reference
 
     if i2 == "":
         i2 = False
@@ -1353,7 +1385,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     adapter2=adapter2,
                                                     min_trim = min_trim,
                                                     ignore_no_match=ignore_no_match,
-                                                    final_min_length=final_min_length)
+                                                    final_min_length=final_min_length,
+                                                    dont_build_reference=dont_build_reference)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
