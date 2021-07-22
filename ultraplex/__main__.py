@@ -53,7 +53,6 @@ def make_5p_bc_dict(barcodes, min_score, dont_build_reference):
         return barcode_dictionary
 
 
-
 def remove_Ns_from_barcodes(barcodes):
     barcodes_no_N = []
         for i in range(len(barcodes)):
@@ -62,7 +61,7 @@ def remove_Ns_from_barcodes(barcodes):
     return barcodes_no_N
 
 
-def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed = False):
+def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed=False):
     """
 	this function scores a given sequence against all the barcodes
 	it's used for the 5' barcode only
@@ -79,7 +78,6 @@ def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed = False):
     elif min_score == len(barcodes_no_N):  # i.e. no matches allowed, and seq not in barcodes
         winner = "no_match"
     else:  # mismatches allowed so need to check
-        # Now, score the sequence
         score_list = []
 
         for this_bc in barcodes_no_N:
@@ -199,22 +197,14 @@ def make_3p_bc_dict(bcs, min_score):
     return three_p_match_d
 
 
-# def score_3p_bc(seq, bcds, min_score):
-#     correct_bcs = {}
-#     for bc in bcs:
-#         # remove Ns
-#         bc_no_N = bc.replace("N", "")
-#         score = sum(a == b for a, b in zip(bc_no_N, seq))
-#         if score >= min_score:
-#             correct_bcs[bc: score]
-#     max_score = max(correct_bcs.values())
-#     final_bc = [a for ]
-
-
 def make_all_seqs(l):
     """
 	Makes all possible sequences, including Ns, of length l
 	"""
+    if l > 7:
+        print("Warning - large barcodes detected!")
+        print("It may best faster to use option '--dont_build_reference'!")
+
     nts = ['A', "C", "G", "T", "N"]
 
     all_seqs = nts
@@ -241,7 +231,7 @@ def rev_c(seq):
     return seq
 
 
-def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False):
+def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_score, reverse_complement=False):
     """
 	read is a dnaio read
 	d is the relevant match dictionary
@@ -270,7 +260,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
         bc = ''.join(sequence[a] for a in positions_to_extract)
 
         if "dont_build" == d:
-            assigned = 
+            assigned = score_barcode_for_dict(bc, linked_bcds_no_N, min_score, Ns_removed=True)
         else:
             assigned = d[bc]
 
@@ -321,6 +311,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
         read.qualities = qualities
 
     return read, assigned, umi, to_remove
+
 
 # TODO link three_p_mismatches to input
 def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches, dont_build_reference):
@@ -400,6 +391,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._adapter2 = adapter2
         self._min_trim = min_trim
         self._ignore_no_match = ignore_no_match
+        self._barcodes_no_N = remove_Ns_from_barcodes(five_p_bcs)
+        self._linked_bcs_no_N = {key:remove_Ns_from_barcodes(value) for (key,value) in linked_bcs.items()}
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -482,7 +475,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                      self._five_p_umi_poses,
                                                                      self._five_p_bc_dict,
                                                                      add_umi=True,
-                                                                     self._five_p_bc,
+                                                                     self._barcodes_no_N,
                                                                      self._min_score_5_p)
 
                     # /# demultiplex at the 3' end
@@ -509,7 +502,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                    self._three_p_bc_dict_of_dicts[
                                                                                        five_p_bc],
                                                                                    add_umi=True,
-                                                                               linked_bcds=self._linked_bcs[five_p_bc])
+                                                                               linked_bcds=self._linked_bcs[five_p_bc],
+                                                                               linked_bcs_no_N=self._linked_bcs_no_N[five_p_bc])
 
                         if not three_p_bc == "no_match":
                             assigned_reads += 1
@@ -610,7 +604,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                         self._five_p_umi_poses,
                                                                         self._five_p_bc_dict,
                                                                         add_umi=False,
-                                                                     self._five_p_bc,
+                                                                     self._barcodes_no_N,
                                                                      self._min_score_5_p)
 
                     # add the 5' umi to each
@@ -654,6 +648,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                     add_umi=False,
                                                                                     linked_bcds=self._linked_bcs[
                                                                                         five_p_bc],
+                                                                               linked_bcs_no_N=self._linked_bcs_no_N[five_p_bc],
                                                                                     reverse_complement=True)
 
                         # add the second umi
@@ -842,7 +837,7 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
 
 def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
-                   five_p_bc_dict, add_umi, barcodes=[], min_score=0):
+                   five_p_bc_dict, add_umi, barcodes_no_N=[], min_score=0):
     """
     this function demultiplexes on the 5' end
     """
@@ -860,7 +855,7 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
         this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
 
         if "dont_build" in five_p_bc_dict:
-            winner = score_barcode_for_dict(this_bc_seq, barcodes, min_score)
+            winner = score_barcode_for_dict(this_bc_seq, barcodes_no_N, min_score, Ns_removed=True)
         else:
             winner = five_p_bc_dict[this_bc_seq]
 
