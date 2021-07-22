@@ -742,22 +742,16 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed,
     reverse read = CCCTTTb5b4b3b2b1iiiiii where i is the illumina adapter for the reverse read
     the reverse read then gets trimmed to CCCTTTb5b4b3b2b1
     So now we just look for bbbbb, which is the reverse complement of what was removed
-    min_equality means it can handle mismatches (but not insertions)
     """
 
-    if trimmed:  # then remove
+    if trimmed:  # then remove the barcode which should, by definition, be there
         read = read[0:len(read.sequence) - len(bcd)]
     else:
         remove_rc = rev_c(to_remove)  # this is now "b5b4b3b2b1"
-        for i in range(0, len(bcd)):
-            j = len(bcd) - i
-            # take the last jth seqs and see if they match
-            end_of_read = read.sequence[-j:]
-            #if end_of_read == remove_rc[0:j]:  # then this is probably the barcode so trim
-            # TODO make this faster - perhaps a cython function; also allow for insertions
-            if sum(a==b for a, b in zip(end_of_read, remove_rc[0:j]))/j >= min_equality:
-                read = read[0:len(read) - j]
-                break
+        adapter = [BackAdapter(to_remove, max_error_rate=0.1, min_overlap=2)]
+        cutter = AdapterCutter(adapter, times=1)
+        read = cutter(read, ModificationInfo(read))
+    
     return read
 
 
