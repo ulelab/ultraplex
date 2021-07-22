@@ -54,53 +54,45 @@ def make_5p_bc_dict(barcodes, min_score, dont_build_reference):
 
 
 def remove_Ns_from_barcodes(barcodes):
-    barcodes_no_N = []
-        for i in range(len(barcodes)):
-            this_bc = barcodes[i]
-            barcodes_no_N.append(this_bc.replace("N", ""))
+    # returns a dictionary with keys of the N-removed barcode, and values of the original barcode
+    barcodes_no_N = {a: a.replace("N", "") for a in barcodes}
     return barcodes_no_N
 
 
 def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed=False):
     """
-	this function scores a given sequence against all the barcodes
-	it's used for the 5' barcode only
+	this function scores a given sequence against all the barcodes. It returns the winner with Ns included.
 	"""
 
-    # first, remove Ns from barcode list
-    if Ns_removed:
-        barcodes_no_N = barcodes
-    else:
-        barcodes_no_N = remove_Ns_from_barcodes(barcodes)
+    if not Ns_removed:
+        barcodes = remove_Ns_from_barcodes(barcodes)
+    barcodes_no_N = barcodes.keys()
 
     if seq in barcodes_no_N:  # no need to check all barcodes
         winner = seq
     elif min_score == len(barcodes_no_N):  # i.e. no matches allowed, and seq not in barcodes
         winner = "no_match"
     else:  # mismatches allowed so need to check
-        score_list = []
+        scores = {}
 
         for this_bc in barcodes_no_N:
             # score the barcode against the read, penalty for N in the read
             score = sum(a == b for a, b in zip(this_bc, seq))
-
-            # append to score list
-            score_list.append(score)
+            scores[this_bc] = score
 
         # Find the best score
-        best_score = max(score_list)
+        best_score = max(scores.values())
 
         if best_score < min_score:
             winner = "no_match"
         else:
             # check that there is only one barcode with the max score
-            winner_indicies = [i for i in range(len(score_list)) if score_list[i] == best_score]
+            filtered = [a for a, b in scores.items() if b == best_score]
 
-            if len(winner_indicies) > 1:
+            if len(filtered) > 1:
                 winner = "no_match"
             else:  # if there is only one
-                winner = barcodes[winner_indicies[0]]
-
+                winner = barcodes_no_N[filtered.keys()[0]]  # barcode WITH Ns included
     return winner
 
 
@@ -260,7 +252,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_sco
         bc = ''.join(sequence[a] for a in positions_to_extract)
 
         if "dont_build" == d:
-            assigned = score_barcode_for_dict(bc, linked_bcds_no_N, min_score, Ns_removed=True)
+            assigned = linked_bcds_no_N[score_barcode_for_dict(bc, linked_bcds_no_N.keys(), min_score, Ns_removed=True)]
         else:
             assigned = d[bc]
 
@@ -855,7 +847,7 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
         this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
 
         if "dont_build" in five_p_bc_dict:
-            winner = score_barcode_for_dict(this_bc_seq, barcodes_no_N, min_score, Ns_removed=True)
+            winner = barcodes_no_N[score_barcode_for_dict(this_bc_seq, barcodes_no_N.keys(), min_score, Ns_removed=True)]
         else:
             winner = five_p_bc_dict[this_bc_seq]
 
