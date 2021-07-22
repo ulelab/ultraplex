@@ -5,7 +5,7 @@ import traceback
 import io
 from multiprocessing import Process, Pipe, Queue
 from typing import BinaryIO
-from qualtrim_new import quality_trim_index  # because qualtrim is in the same folder shouldn't need ultraplex.qualtrim?
+from qualtrim_new import quality_trim_index
 from ultraplex.modifiers import AdapterCutter, ModificationInfo
 from ultraplex.adapters import BackAdapter
 import gzip
@@ -88,11 +88,10 @@ def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed=False):
         else:
             # check that there is only one barcode with the max score
             filtered = [a for a, b in scores.items() if b == best_score]
-
             if len(filtered) > 1:
                 winner = "no_match"
             else:  # if there is only one
-                winner = barcodes_no_N[filtered.keys()[0]]  # barcode WITH Ns included
+                winner = barcodes[filtered[0]]  # barcode WITH Ns included
     return winner
 
 
@@ -467,14 +466,14 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                      self._five_p_umi_poses,
                                                                      self._five_p_bc_dict,
                                                                      add_umi=True,
-                                                                     self._barcodes_no_N,
-                                                                     self._min_score_5_p)
+                                                                     barcodes_no_N=self._barcodes_no_N,
+                                                                     min_score=self._min_score_5_p)
 
                     # /# demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
                     try:
                         linked = self._linked_bcs[five_p_bc]
-                    except:
+                    except KeyError:
                         linked = "_none_"
 
                     if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
@@ -596,8 +595,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                         self._five_p_umi_poses,
                                                                         self._five_p_bc_dict,
                                                                         add_umi=False,
-                                                                     self._barcodes_no_N,
-                                                                     self._min_score_5_p)
+                                                                     barcodes_no_N=self._barcodes_no_N,
+                                                                     min_score=self._min_score_5_p)
 
                     # add the 5' umi to each
                     for read in [read1, read2]:
