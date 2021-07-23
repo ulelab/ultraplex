@@ -222,7 +222,8 @@ def rev_c(seq):
     return seq
 
 
-def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_score, reverse_complement=False):
+def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_score, keep_barcodes,
+                        reverse_complement=False):
     """
 	read is a dnaio read
 	d is the relevant match dictionary
@@ -278,8 +279,9 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_sco
             if long_enough:
                 umi = ''.join(sequence[a] for a in umi_positions_to_extract)
                 length = len(assigned)
-                sequence = sequence[0:(len(read) - length)]
-                qualities = qualities[0:(len(read.qualities) - length)]
+                if not keep_barcodes:
+                    sequence = sequence[0:(len(read) - length)]
+                    qualities = qualities[0:(len(read.qualities) - length)]
             else:  # barcode assigned, but read too short to contain full umi
                 assigned = "no_match"
 
@@ -355,7 +357,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  min_trim,
                  ignore_no_match,
                  final_min_length,
-                 dont_build_reference):
+                 dont_build_reference,
+                 keep_barcode):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -385,6 +388,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._ignore_no_match = ignore_no_match
         self._barcodes_no_N = remove_Ns_from_barcodes(five_p_bcs)
         self._linked_bcds_no_N = {key:remove_Ns_from_barcodes(value) for (key,value) in linked_bcds.items()}
+        self._keep_barcode = keep_barcode
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -468,7 +472,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                      self._five_p_bc_dict,
                                                                      add_umi=True,
                                                                      barcodes_no_N=self._barcodes_no_N,
-                                                                     min_score=self._min_score_5_p)
+                                                                     min_score=self._min_score_5_p,
+                                                                     keep_barcode=self._keep_barcode)
 
                     # /# demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
@@ -496,7 +501,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                    add_umi=True,
                                                                                linked_bcds=self._linked_bcds[five_p_bc],
                                                                                linked_bcds_no_N=self._linked_bcds_no_N[five_p_bc],
-                                                                                   min_score=self._min_score_d[five_p_bc])
+                                                                                   min_score=self._min_score_d[five_p_bc],
+                                                                                   keep_barcodes=self._keep_barcode)
 
                         if not three_p_bc == "no_match":
                             assigned_reads += 1
@@ -643,7 +649,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                         five_p_bc],
                                                                 min_score = self._min_score_d[five_p_bc],
                                                                                linked_bcds_no_N=self._linked_bcds_no_N[five_p_bc],
-                                                                                    reverse_complement=True)
+                                                                                    reverse_complement=True,
+                                                                                    keep_barcodes=self._keep_barcode)
 
                         # add the second umi
                         for read in [read1, read2]:
@@ -825,7 +832,7 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
 
 def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
-                   five_p_bc_dict, add_umi, barcodes_no_N=[], min_score=0):
+                   five_p_bc_dict, add_umi, barcodes_no_N=[], min_score=0, keep_barcode):
     """
     this function demultiplexes on the 5' end
     """
@@ -858,9 +865,10 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
             # /# find umi sequence
             this_five_p_umi = ''.join([read.sequence[i] for i in five_p_umi_poses[winner]])
 
-            # /# update read and read header
-            read.sequence = read.sequence[len(winner):]
-            read.qualities = read.qualities[len(winner):]
+            if not keep_barcode:
+                # /# update read and read header
+                read.sequence = read.sequence[len(winner):]
+                read.qualities = read.qualities[len(winner):]
 
             if add_umi:
                 # to read header add umi and 5' barcode info
@@ -899,7 +907,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, three_p_mismatches, linked_bcds, three_p_trim_q,
                   ultra_mode, output_directory, final_min_length, q5, i2, adapter2, min_trim,
-                  ignore_no_match, dont_build_reference):
+                  ignore_no_match, dont_build_reference, keep_barcode):
     """
 	This function starts all the workers
 	"""
@@ -943,7 +951,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                min_trim = min_trim,
                                ignore_no_match=ignore_no_match,
                                final_min_length=final_min_length,
-                               dont_build_reference=dont_build_reference)
+                               dont_build_reference=dont_build_reference,
+                               keep_barcode=keep_barcode)
 
         worker.start()
         workers.append(worker)
@@ -1271,6 +1280,9 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
         help="Do not write reads for which there is no match.")
     optional.add_argument("-dbr", "--dont_build_reference", default=False, action="store_true",
         help="Skip the reference building step - for long barcodes this will improve speed.")
+    optional.add_argument("-kbc", "--keep_barcode", default=False, action="store_true",
+                          help="Do not remove barcodes/UMIs from the read (UMIs will still be moved to the "
+                               "read header)")
 
     parser._action_groups.append(optional)
     args = parser.parse_args()
@@ -1310,6 +1322,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     min_trim = args.min_trim
     ignore_no_match = args.ignore_no_match
     dont_build_reference = args.dont_build_reference
+    keep_barcode = args.keep_barcode
 
     if i2 == "":
         i2 = False
@@ -1369,7 +1382,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     min_trim = min_trim,
                                                     ignore_no_match=ignore_no_match,
                                                     final_min_length=final_min_length,
-                                                    dont_build_reference=dont_build_reference)
+                                                    dont_build_reference=dont_build_reference,
+                                                    keep_barcode=keep_barcode)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
