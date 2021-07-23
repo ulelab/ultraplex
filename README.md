@@ -166,5 +166,9 @@ A prefix that is added to the output files to help identify which sequencing run
 Ignore free space warning (-ig, --ignore_space_warning):
 When Ultraplex is run, it first estimates how much free space is needed for the job to complete, and then checks whether there is enough space. If there is not, it will not run. This option overrides this behaviour, allowing Ultraplex to run even if it does not think there is enough free storage space.
 
+### Don't build reference (-dbr, --dont_build_reference)
+When using very long barcodes, reference building can take a long time. Select this option to skip the reference building step, which for long barcodes will be faster overall.
 
+### Keep barcodes (-kbc, --keep_barcodes)
+This option keeps barcodes and UMIs in the read after demultiplexing - note that UMIs will still be moved to the read header.
 
