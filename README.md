@@ -30,7 +30,7 @@ Build an ultraplex environment straight from our yaml:
 ```
 conda env create -f environment.yml
 ```
-Or add ultraplex to your existing environment (note python >= 3.6 is required)
+Or add ultraplex to your existing environment (note python >= 3.7 is required)
 ```
 conda install -c conda-forge -c bioconda ultraplex
 ```
