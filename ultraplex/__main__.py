@@ -5,7 +5,7 @@ import traceback
 import io
 from multiprocessing import Process, Pipe, Queue
 from typing import BinaryIO
-from qualtrim_new import quality_trim_index  # because qualtrim is in the same folder shouldn't need ultraplex.qualtrim?
+from qualtrim_new import quality_trim_index
 from ultraplex.modifiers import AdapterCutter, ModificationInfo
 from ultraplex.adapters import BackAdapter
 import gzip
@@ -26,70 +26,73 @@ def round_sig(x, sig=2):
     return to_return
 
 
-def make_5p_bc_dict(barcodes, min_score):
+def make_5p_bc_dict(barcodes, min_score, dont_build_reference):
     """
 	this function generates a dictionary that matches each possible sequence
 	from the read with the best 5' barcode
 	"""
-    first_bc = barcodes[0]
-    seq_length = len(first_bc.replace("N", ""))
+    if dont_build_reference:
+        return {"dont_build": True}
+    else:
+        first_bc = barcodes[0]
+        seq_length = len(first_bc.replace("N", ""))
 
-    # check all the barcodes are the same length (ignoring UMIs)
-    for bc in barcodes:
-        assert len(bc.replace("N", "")) == seq_length, "Your experimental barcodes are different lengths."
+        # check all the barcodes are the same length (ignoring UMIs)
+        for bc in barcodes:
+            assert len(bc.replace("N", "")) == seq_length, "Your experimental barcodes are different lengths."
 
-    seqs = make_all_seqs(seq_length)
+        seqs = make_all_seqs(seq_length)
 
-    # trim sequences to desired length
-    # create dictionary
-    barcode_dictionary = {}
+        # trim sequences to desired length
+        # create dictionary
+        barcode_dictionary = {}
 
-    for seq in seqs:
-        barcode_dictionary[seq] = score_barcode_for_dict(seq, barcodes, min_score)
+        for seq in seqs:
+            barcode_dictionary[seq] = score_barcode_for_dict(seq, barcodes, min_score)
+        return barcode_dictionary
 
-    return barcode_dictionary
+
+def remove_Ns_from_barcodes(barcodes):
+    # returns a dictionary with keys of the N-removed barcode, and values of the original barcode
+    barcodes_no_N = {a.replace("N", ""): a for a in barcodes}
+    barcodes_no_N["no_match"] = "no_match"
+    return barcodes_no_N
 
 
-def score_barcode_for_dict(seq, barcodes, min_score):
+def score_barcode_for_dict(seq, barcodes, min_score, Ns_removed=False):
     """
-	this function scores a given sequence against all the barcodes
-	it's used for the 5' barcode only
+	this function scores a given sequence against all the barcodes. It returns the winner with Ns included.
 	"""
 
-    # first, remove Ns from barcode list
-    barcodes_no_N = []
-    for i in range(len(barcodes)):
-        this_bc = barcodes[i]
-        barcodes_no_N.append(this_bc.replace("N", ""))
+    if not Ns_removed:
+        barcodes = remove_Ns_from_barcodes(barcodes)
+    barcodes_no_N = barcodes.keys()
 
-    # Now, score the sequence
-    score_list = []
-
-    for this_bc in barcodes_no_N:
-        # find length of this barcode
-        this_bc_l = len(this_bc)
-
-        # score the barcode against the read, penalty for N in the read
-        score = sum(a == b for a, b in zip(this_bc, seq))
-
-        # append to score list
-        score_list.append(score)
-
-    # Find the best score
-    best_score = max(score_list)
-
-    if best_score < min_score:
+    if seq in barcodes_no_N:  # no need to check all barcodes
+        winner = barcodes[seq]  # barcode WITH Ns included
+    elif min_score == len(barcodes_no_N):  # i.e. no matches allowed, and seq not in barcodes
         winner = "no_match"
-    else:
-        # check that there is only one barcode with the max score
-        winner_indicies = [i for i in range(len(score_list)) if score_list[i] == best_score]
+    else:  # mismatches allowed so need to check
+        scores = {}
 
-        if len(winner_indicies) > 1:
+        for this_bc in barcodes_no_N:
+            # score the barcode against the read, penalty for N in the read
+            score = sum(a == b for a, b in zip(this_bc, seq))
+            scores[this_bc] = score
+
+        # Find the best score
+        best_score = max(scores.values())
+
+        if best_score < min_score:
             winner = "no_match"
-        else:  # if there is only one
-            winner = barcodes[winner_indicies[0]]
-
-    return (winner)
+        else:
+            # check that there is only one barcode with the max score
+            filtered = [a for a, b in scores.items() if b == best_score]
+            if len(filtered) > 1:
+                winner = "no_match"
+            else:  # if there is only one
+                winner = barcodes[filtered[0]]  # barcode WITH Ns included
+    return winner
 
 
 class ReaderProcess(Process):
@@ -176,27 +179,12 @@ def make_3p_bc_dict(bcs, min_score):
 	"""
     # First, find positions of barcode bases (not UMIs) relative to 3' end of read
 
-    bcl = len([a for a,b in enumerate(bcs[0]) if b != "N"]) # number of non-N characters in barcode
+    bcl = len([a for a, b in enumerate(bcs[0]) if b != "N"])  # number of non-N characters in barcode
     all_seqs = make_all_seqs(bcl)
     three_p_match_d = {}
     for seq in all_seqs:
-        # assume no match
-        three_p_match_d[seq] = "no_match"
         # now check if there actually is a match
-        correct_bcs = []
-
-        for bc in bcs:
-
-            # remove Ns
-            bc_no_N = bc.replace("N", "")
-
-            score = sum(a == b for a, b in zip(bc_no_N, seq))
-
-            if score >= min_score:
-                correct_bcs.append(bc)
-
-        if len(correct_bcs) == 1:
-            three_p_match_d[seq] = correct_bcs[0]
+        three_p_match_d[seq] = score_barcode_for_dict(seq, bcs, min_score)
     return three_p_match_d
 
 
@@ -204,6 +192,10 @@ def make_all_seqs(l):
     """
 	Makes all possible sequences, including Ns, of length l
 	"""
+    if l > 8:
+        print("Warning - large barcodes detected!")
+        print("It may best faster to use option '--dont_build_reference'!")
+
     nts = ['A', "C", "G", "T", "N"]
 
     all_seqs = nts
@@ -230,14 +222,15 @@ def rev_c(seq):
     return seq
 
 
-def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False):
+def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_score, keep_barcodes,
+                        reverse_complement=False):
     """
 	read is a dnaio read
 	d is the relevant match dictionary
 	length is the length of the 3' barcodes (it assumes they're all the same)
 	"""
 
-    if reverse_complement: # if it's paired end reverse complement the reverse read
+    if reverse_complement:  # if it's paired end reverse complement the reverse read
         sequence = rev_c(read.sequence)
         qualities = read.qualities[::-1]  # just reverse - can't complement qualities!
     else:
@@ -246,11 +239,11 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
 
     # find the positions of the non-N characters relative to 3' end
     # TODO precalculate these for faster operation - make a dict of positions for each 5' bacordes linked 3' barcodes
-    bc_length_reference = len(linked_bcds[0]) # can use [0] because non-N guaranteed to be consistent
-    non_N_poses = [a-bc_length_reference for a, b in enumerate(linked_bcds[0]) if b != "N"] # all negative
+    bc_length_reference = len(linked_bcds[0])  # can use [0] because non-N guaranteed to be consistent
+    non_N_poses = [a - bc_length_reference for a, b in enumerate(linked_bcds[0]) if b != "N"]  # all negative
 
     seq_length = len(sequence)
-    positions_to_extract = [x+seq_length for x in non_N_poses]
+    positions_to_extract = [x + seq_length for x in non_N_poses]
 
     umi = ""  # initialise
 
@@ -258,18 +251,21 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
 
         bc = ''.join(sequence[a] for a in positions_to_extract)
 
-        assigned = d[bc]
+        if "dont_build" == d:
+            assigned = score_barcode_for_dict(bc, linked_bcds_no_N, min_score, Ns_removed=True)
+        else:
+            assigned = d[bc]
 
-        if reverse_complement: # the sequence that will be removed
+        if reverse_complement:  # the sequence that will be removed
             to_remove = read.sequence[0:len(assigned)]
         else:
             # then it's not paired end, so we don't care
             to_remove = None
 
-        if not assigned == "no_match": # ie there is a match - then we need to trim
+        if not assigned == "no_match":  # ie there is a match - then we need to trim
             bc_length = len(assigned)
             # add to umi
-            umi_poses = [a-bc_length for a, b in enumerate(assigned) if b == 'N']
+            umi_poses = [a - bc_length for a, b in enumerate(assigned) if b == 'N']
             umi_positions_to_extract = [x + seq_length for x in umi_poses]
 
             # check it's long enough to contain UMIs, or that there are no UMIs
@@ -283,8 +279,9 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
             if long_enough:
                 umi = ''.join(sequence[a] for a in umi_positions_to_extract)
                 length = len(assigned)
-                sequence = sequence[0:(len(read) - length)]
-                qualities = qualities[0:(len(read.qualities) - length)]
+                if not keep_barcodes:
+                    sequence = sequence[0:(len(read) - length)]
+                    qualities = qualities[0:(len(read.qualities) - length)]
             else:  # barcode assigned, but read too short to contain full umi
                 assigned = "no_match"
 
@@ -308,23 +305,30 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, reverse_complement=False)
 
     return read, assigned, umi, to_remove
 
+
 # TODO link three_p_mismatches to input
-def make_dict_of_3p_bc_dicts(linked_bcs, three_p_mismatches):
+def make_dict_of_3p_bc_dicts(linked_bcds, three_p_mismatches, dont_build_reference):
     """
 	this function makes a different dictionary for each 5' barcode
 	it also checks that they're all the same length
 	"""
+
     d = {}
-    for five_p_bc, three_p_bcs in linked_bcs.items():
+    min_score_d = {}
+    for five_p_bc, three_p_bcs in linked_bcds.items():
         if len(three_p_bcs) > 0:  # ie this 5' barcode has 3' barcodes
             # check they're consistent
             check_N_position(three_p_bcs, "3")
             # work out the min score - only do first one because already checked they're consistent
             min_score = len([a for a, b in enumerate(three_p_bcs[0]) if b != "N"]) - three_p_mismatches
-            this_dict = make_3p_bc_dict(three_p_bcs, min_score)
-            d[five_p_bc] = this_dict
+            if dont_build_reference:
+                d[five_p_bc] = "dont_build"
+            else:
+                this_dict = make_3p_bc_dict(three_p_bcs, min_score)
+                d[five_p_bc] = this_dict
+            min_score_d[five_p_bc] = min_score
 
-    return d
+    return d, min_score_d
 
 
 class WorkerProcess(Process):  # /# have to have "Process" here to enable worker.start()
@@ -345,14 +349,16 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  total_reads_5p_no_3p,
                  ultra_mode,
                  min_score_5_p, three_p_mismatches,
-                 linked_bcs,
+                 linked_bcds,
                  three_p_trim_q,
                  q5,
                  i2,
                  adapter2,
                  min_trim,
                  ignore_no_match,
-                 final_min_length):
+                 final_min_length,
+                 dont_build_reference,
+                 keep_barcode):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -365,14 +371,16 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._total_reads_adaptor_trimmed = total_reads_adaptor_trimmed  # a queue which keeps track of the total number of reads adaptor trimmed
         self._total_reads_5p_no_3p = total_reads_5p_no_3p  # a queue which keeps track of how many reads have correct 5p BC but cannot find 3p BC
         self._adapter = adapter  # the 3' adapter
-        self._final_min_length = final_min_length # length of final written reads
-        self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcs"?
+        self._final_min_length = final_min_length  # length of final written reads
+        self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcds"?
         self._save_name = save_name  # the name to save the output fastqs
         self._five_p_barcodes_pos, self._five_p_umi_poses = find_bc_and_umi_pos(five_p_bcs)
-        self._five_p_bc_dict = make_5p_bc_dict(five_p_bcs, min_score_5_p)
+        self._five_p_bc_dict = make_5p_bc_dict(five_p_bcs, min_score_5_p, dont_build_reference)
         self._min_score_5_p = min_score_5_p  #
-        self._linked_bcs = linked_bcs  # which 3' barcodes each 5' bc is linked - a dictionary
-        self._three_p_bc_dict_of_dicts = make_dict_of_3p_bc_dicts(self._linked_bcs, three_p_mismatches)  # a dict of dicts - each 5' barcodes has
+        self._linked_bcds = linked_bcds  # which 3' barcodes each 5' bc is linked - a dictionary
+        self._three_p_bc_dict_of_dicts, self._min_score_d = make_dict_of_3p_bc_dicts(self._linked_bcds,
+                                                                                     three_p_mismatches,
+                                                                                     dont_build_reference)  # a dict of dicts - each 5' barcodes has
         # a dict of which 3' barcode matches the given sequence, which is also a dict
         self._ultra_mode = ultra_mode
         self._output_directory = output_directory
@@ -380,6 +388,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._adapter2 = adapter2
         self._min_trim = min_trim
         self._ignore_no_match = ignore_no_match
+        self._barcodes_no_N = remove_Ns_from_barcodes(five_p_bcs)
+        self._linked_bcds_no_N = {key: remove_Ns_from_barcodes(value) for (key, value) in linked_bcds.items()}
+        self._keep_barcode = keep_barcode
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -449,9 +460,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     umi = ""
 
                     read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed = self.trim_and_cut(read,
-                                                                                                    cutter,
-                                                                                                    reads_quality_trimmed,
-                                                                                                    reads_adaptor_trimmed)
+                                                                                                                 cutter,
+                                                                                                                 reads_quality_trimmed,
+                                                                                                                 reads_adaptor_trimmed)
 
                     # /# demultiplex at the 5' end ###
                     read.name = read.name.replace(" ", "").replace("/", "").replace("\\",
@@ -461,13 +472,16 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                      self._five_p_barcodes_pos,
                                                                      self._five_p_umi_poses,
                                                                      self._five_p_bc_dict,
-                                                                     add_umi=True)
+                                                                     add_umi=True,
+                                                                     barcodes_no_N=self._barcodes_no_N,
+                                                                     min_score=self._min_score_5_p,
+                                                                     keep_barcode=self._keep_barcode)
 
                     # /# demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
                     try:
-                        linked = self._linked_bcs[five_p_bc]
-                    except:
+                        linked = self._linked_bcds[five_p_bc]
+                    except KeyError:
                         linked = "_none_"
 
                     if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
@@ -487,7 +501,13 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                    self._three_p_bc_dict_of_dicts[
                                                                                        five_p_bc],
                                                                                    add_umi=True,
-                                                                               linked_bcds=self._linked_bcs[five_p_bc])
+                                                                                   linked_bcds=self._linked_bcds[
+                                                                                       five_p_bc],
+                                                                                   linked_bcds_no_N=
+                                                                                   self._linked_bcds_no_N[five_p_bc],
+                                                                                   min_score=self._min_score_d[
+                                                                                       five_p_bc],
+                                                                                   keep_barcodes=self._keep_barcode)
 
                         if not three_p_bc == "no_match":
                             assigned_reads += 1
@@ -566,15 +586,16 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     umi = ""
                     reads_written += 1
                     # /# first, trim by quality score
-                    read1, trimmed1, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed1 = self.trim_and_cut(read1,
-                                                                                                      cutter1,
-                                                                                                      reads_quality_trimmed,
-                                                                                                      reads_adaptor_trimmed)
+                    read1, trimmed1, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed1 = self.trim_and_cut(
+                        read1,
+                        cutter1,
+                        reads_quality_trimmed,
+                        reads_adaptor_trimmed)
 
                     read2, trimmed2, ignore, ignore_also, min_trimmed2 = self.trim_and_cut(read2,
-                                                                             cutter2,
-                                                                             reads_quality_trimmed,
-                                                                             reads_adaptor_trimmed)
+                                                                                           cutter2,
+                                                                                           reads_quality_trimmed,
+                                                                                           reads_adaptor_trimmed)
 
                     # /# demultiplex at the 5' end ###
                     read1.name = read1.name.replace(" ", "").replace("/", "").replace("\\",
@@ -587,7 +608,10 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                         self._five_p_barcodes_pos,
                                                                         self._five_p_umi_poses,
                                                                         self._five_p_bc_dict,
-                                                                        add_umi=False)
+                                                                        add_umi=False,
+                                                                        barcodes_no_N=self._barcodes_no_N,
+                                                                        min_score=self._min_score_5_p,
+                                                                        keep_barcode=self._keep_barcode)
 
                     # add the 5' umi to each
                     for read in [read1, read2]:
@@ -599,11 +623,12 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     # /# demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
                     try:
-                        linked = self._linked_bcs[five_p_bc]
+                        linked = self._linked_bcds[five_p_bc]
                     except:
                         linked = "_none_"
 
-                    if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5' barcdoes
+                    if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5'
+                        # barcdoes
                         comb_bc = '_5bc_' + five_p_bc
 
                         # remove the 5' barcoded adapter from reverse read
@@ -628,9 +653,14 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                                                                     self._three_p_bc_dict_of_dicts[
                                                                                         five_p_bc],
                                                                                     add_umi=False,
-                                                                                    linked_bcds=self._linked_bcs[
+                                                                                    linked_bcds=self._linked_bcds[
                                                                                         five_p_bc],
-                                                                                    reverse_complement=True)
+                                                                                    min_score=self._min_score_d[
+                                                                                        five_p_bc],
+                                                                                    linked_bcds_no_N=
+                                                                                    self._linked_bcds_no_N[five_p_bc],
+                                                                                    reverse_complement=True,
+                                                                                    keep_barcodes=self._keep_barcode)
 
                         # add the second umi
                         for read in [read1, read2]:
@@ -721,8 +751,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
             self._total_reads_5p_no_3p.put(new_total)
 
 
-def remove_mate_adapter(read, to_remove, bcd, trimmed,
-    min_equality = 0.8):
+def remove_mate_adapter(read, to_remove, bcd, trimmed):
     """
     This function looks for the barcoded adapter (UMI-specific, not just Ns) in the mate read. It then checks
     that not too much was removed
@@ -731,32 +760,25 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed,
     reverse read = CCCTTTb5b4b3b2b1iiiiii where i is the illumina adapter for the reverse read
     the reverse read then gets trimmed to CCCTTTb5b4b3b2b1
     So now we just look for bbbbb, which is the reverse complement of what was removed
-    min_equality means it can handle mismatches (but not insertions)
     """
 
-    if trimmed:  # then remove
+    if trimmed:  # then remove the barcode which should, by definition, be there
         read = read[0:len(read.sequence) - len(bcd)]
     else:
         remove_rc = rev_c(to_remove)  # this is now "b5b4b3b2b1"
-        for i in range(0, len(bcd)):
-            j = len(bcd) - i
-            # take the last jth seqs and see if they match
-            end_of_read = read.sequence[-j:]
-            #if end_of_read == remove_rc[0:j]:  # then this is probably the barcode so trim
-            # TODO make this faster - perhaps a cython function; also allow for insertions
-            if sum(a==b for a, b in zip(end_of_read, remove_rc[0:j]))/j >= min_equality:
-                read = read[0:len(read) - j]
-                break
+        adapter = [BackAdapter(remove_rc, max_error_rate=0.1, min_overlap=2)]
+        cutter = AdapterCutter(adapter, times=1)
+        read = cutter(read, ModificationInfo(read))
+
     return read
 
 
 def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
                     ultra_mode, ignore_no_match):
-
-    write_this = True # assume true
+    write_this = True  # assume true
     if "no_match" in demulti_type and ignore_no_match:
         write_this = False
-    
+
     if ultra_mode and write_this:
         # /# work out this filename
         filename = output_dir + 'ultraplex_' + save_name + demulti_type + '_tmp_thread_' + str(
@@ -785,7 +807,7 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
             output = '\n'.join(this_out) + '\n'
             # print(output)
             file.write(output)
-    
+
     elif write_this:
         # /# work out this filename
         filename = output_dir + 'ultraplex_' + save_name + demulti_type + '_tmp_thread_' + str(
@@ -818,7 +840,7 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
 
 def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
-                   five_p_bc_dict, add_umi):
+                   five_p_bc_dict, add_umi, keep_barcode, barcodes_no_N=[], min_score=0):
     """
     this function demultiplexes on the 5' end
     """
@@ -834,7 +856,11 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
     if sequence_length > max(five_p_bc_pos):
         # find best barcode match
         this_bc_seq = ''.join([read.sequence[i] for i in five_p_bc_pos])
-        winner = five_p_bc_dict[this_bc_seq]
+
+        if "dont_build" in five_p_bc_dict:
+            winner = score_barcode_for_dict(this_bc_seq, barcodes_no_N, min_score, Ns_removed=True)
+        else:
+            winner = five_p_bc_dict[this_bc_seq]
 
         # store what sequence will be removed
         if sequence_length < len(winner):  # read is too short to contain barcode
@@ -847,9 +873,10 @@ def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
             # /# find umi sequence
             this_five_p_umi = ''.join([read.sequence[i] for i in five_p_umi_poses[winner]])
 
-            # /# update read and read header
-            read.sequence = read.sequence[len(winner):]
-            read.qualities = read.qualities[len(winner):]
+            if not keep_barcode:
+                # /# update read and read header
+                read.sequence = read.sequence[len(winner):]
+                read.qualities = read.qualities[len(winner):]
 
             if add_umi:
                 # to read header add umi and 5' barcode info
@@ -886,9 +913,9 @@ def find_bc_and_umi_pos(barcodes):
 def start_workers(n_workers, input_file, need_work_queue, adapter,
                   five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
-                  min_score_5_p, three_p_mismatches, linked_bcs, three_p_trim_q,
+                  min_score_5_p, three_p_mismatches, linked_bcds, three_p_trim_q,
                   ultra_mode, output_directory, final_min_length, q5, i2, adapter2, min_trim,
-                  ignore_no_match):
+                  ignore_no_match, dont_build_reference, keep_barcode):
     """
 	This function starts all the workers
 	"""
@@ -924,14 +951,16 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                ultra_mode=ultra_mode,
                                min_score_5_p=min_score_5_p,
                                three_p_mismatches=three_p_mismatches,
-                               linked_bcs=linked_bcs,
+                               linked_bcds=linked_bcds,
                                three_p_trim_q=three_p_trim_q,
                                q5=q5,
                                i2=i2,
                                adapter2=adapter2,
-                               min_trim = min_trim,
+                               min_trim=min_trim,
                                ignore_no_match=ignore_no_match,
-                               final_min_length=final_min_length)
+                               final_min_length=final_min_length,
+                               dont_build_reference=dont_build_reference,
+                               keep_barcode=keep_barcode)
 
         worker.start()
         workers.append(worker)
@@ -957,7 +986,7 @@ def concatenate_files(save_name, ultra_mode,
         this_type = name.split("_tmp_thread_")[0]
 
         if this_type not in all_types:
-            all_types.append(this_type) # this_type contains directory if applicable
+            all_types.append(this_type)  # this_type contains directory if applicable
 
     # now concatenate them
     if ultra_mode:
@@ -978,7 +1007,8 @@ def concatenate_files(save_name, ultra_mode,
             c_thread_n = '-p' + str(compression_threads)
             if sbatch_compression:
                 os.system(
-                    'sbatch -J compression -c ' + str(compression_threads) + ' --time 4:00:00 --wrap="pigz ' + c_thread_n + ' ' + this_type + '.fastq"')
+                    'sbatch -J compression -c ' + str(
+                        compression_threads) + ' --time 4:00:00 --wrap="pigz ' + c_thread_n + ' ' + this_type + '.fastq"')
             else:
                 os.system('pigz ' + c_thread_n + ' ' + this_type + '.fastq')
 
@@ -1015,7 +1045,7 @@ def concatenate_files(save_name, ultra_mode,
             for name in filenames:
                 os.remove(name)
 
-    if len(sample_names) > 0: # ie the user has specified at least one sample name
+    if len(sample_names) > 0:  # ie the user has specified at least one sample name
         for this_type in all_types:
             sample_name_list = []
             # check whether any of the keys in the dictionary match this type
@@ -1025,19 +1055,21 @@ def concatenate_files(save_name, ultra_mode,
                     if "_3bc_" in this_type:
                         if "_3bc_" in key:
                             sample_name_list.append(key)
-                    else: # if 3' bc is not in the type, the by definition if won't be in the key
+                    else:  # if 3' bc is not in the type, the by definition if won't be in the key
                         sample_name_list.append(key)
 
-            if len(sample_name_list) == 1: # check that only one name matches
+            if len(sample_name_list) == 1:  # check that only one name matches
                 if "Fwd" in this_type:
-                    os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+"_Fwd.fastq.gz")
+                    os.system("mv " + this_type + ".fastq.gz " + output_directory + "ultraplex_" + save_name + "_" +
+                              sample_names[sample_name_list[0]] + "_Fwd.fastq.gz")
                 elif "Rev" in this_type:
-                    os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+"_Rev.fastq.gz")
+                    os.system("mv " + this_type + ".fastq.gz " + output_directory + "ultraplex_" + save_name + "_" +
+                              sample_names[sample_name_list[0]] + "_Rev.fastq.gz")
                 else:
-                    os.system("mv " + this_type + ".fastq.gz "+ output_directory+"ultraplex_"+save_name+"_"+sample_names[sample_name_list[0]]+".fastq.gz")
+                    os.system("mv " + this_type + ".fastq.gz " + output_directory + "ultraplex_" + save_name + "_" +
+                              sample_names[sample_name_list[0]] + ".fastq.gz")
             if len(sample_name_list) > 1:
                 print("Warning - unable to rename file as filename-sample combination was not unique")
-
 
 
 def clean_files(output_directory, save_name):
@@ -1052,11 +1084,11 @@ def process_bcs(csv, mismatch_5p):
     linked = {}
     sample_names = {}
 
-    counter_5 = 0 # all 5' barcodes must be consistent
+    counter_5 = 0  # all 5' barcodes must be consistent
 
     with open(csv, 'r') as file:
         for row in file:
-            counter_3 = 0 # 3' barcodes only have to be consistent for each 5' barcode
+            counter_3 = 0  # 3' barcodes only have to be consistent for each 5' barcode
             counter_5 += 1
             # First, find if theres a comma
             line = row.rstrip().replace(" ", "")
@@ -1076,7 +1108,7 @@ def process_bcs(csv, mismatch_5p):
                 # then there's no 3' barcode
                 five_p_bcs.append(comma_split[0].split(":")[0].upper())
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
-                
+
                 if len(comma_split[0].split(":")) > 1:
                     if comma_split[0].split(":")[1] != "":
                         sample_names["5bc_" + comma_split[0].split(":")[0].upper()] = comma_split[0].split(":")[1]
@@ -1084,19 +1116,22 @@ def process_bcs(csv, mismatch_5p):
                 if counter_5 == 1:
                     fivelength = len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0])
                 else:
-                    assert len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
+                    assert len(comma_split[0].rstrip().upper().replace("N", "").split(":")[
+                                   0]) == fivelength, "5' barcodes not consistent"
             else:
                 # then we have 3 prime bcds
-                five_p_bcs.append(comma_split[0].split(":")[0].upper())                        
+                five_p_bcs.append(comma_split[0].split(":")[0].upper())
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
                 if comma_split[0].count(":") == 1:
-                    assert comma_split[0].count(":")[1] == "", "You cannot name the 5' sample if it's linked to 3' barcodes (please remove 5' barcode name)"
+                    assert comma_split[0].count(":")[
+                               1] == "", "You cannot name the 5' sample if it's linked to 3' barcodes (please remove 5' barcode name)"
 
                 if counter_5 == 1:
                     fivelength = len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0])
                 else:
-                    assert len(comma_split[0].rstrip().upper().replace("N", "").split(":")[0]) == fivelength, "5' barcodes not consistent"
-                
+                    assert len(comma_split[0].rstrip().upper().replace("N", "").split(":")[
+                                   0]) == fivelength, "5' barcodes not consistent"
+
                 # find the 3' barcodes
                 three_ps = [b for a, b in enumerate(comma_split) if a > 0 and b != ""]
                 linked[comma_split[0]] = [a.split(":")[0].upper() for a in three_ps]
@@ -1127,7 +1162,6 @@ def process_bcs(csv, mismatch_5p):
     match_5p = fivelength - mismatch_5p
 
     return five_p_bcs, three_p_bcs, linked, match_5p, sample_names
-
 
 
 def print_header():
@@ -1253,10 +1287,16 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                           nargs="?",
                           help="sequencing adaptor to trim for the reverse read [Default AGATCGGAAGAGCGTCGTG]")
     optional.add_argument("-mt", "--min_trim", type=int, default=3, nargs="?",
-    help=("When using single end reads for 3' demultiplexing, this is the minimum adapter trimming amount for a 3'" 
-          "barcode to be detected. Default = 3"))
+                          help=(
+                              "When using single end reads for 3' demultiplexing, this is the minimum adapter trimming amount for a 3'"
+                              "barcode to be detected. Default = 3"))
     optional.add_argument("-inm", "--ignore_no_match", action="store_true", default=False,
-        help="Do not write reads for which there is no match.")
+                          help="Do not write reads for which there is no match.")
+    optional.add_argument("-dbr", "--dont_build_reference", default=False, action="store_true",
+                          help="Skip the reference building step - for long barcodes this will improve speed.")
+    optional.add_argument("-kbc", "--keep_barcode", default=False, action="store_true",
+                          help="Do not remove barcodes/UMIs from the read (UMIs will still be moved to the "
+                               "read header)")
 
     parser._action_groups.append(optional)
     args = parser.parse_args()
@@ -1295,6 +1335,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     i2 = args.input_2
     min_trim = args.min_trim
     ignore_no_match = args.ignore_no_match
+    dont_build_reference = args.dont_build_reference
+    keep_barcode = args.keep_barcode
 
     if i2 == "":
         i2 = False
@@ -1313,9 +1355,9 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     check_enough_space(output_directory, file_name, ignore_space_warning, ultra_mode, i2)
 
     # process the barcodes csv
-    five_p_bcs, three_p_bcs, linked_bcs, min_score_5_p, sample_names = process_bcs(barcodes_csv, mismatch_5p)
+    five_p_bcs, three_p_bcs, linked_bcds, min_score_5_p, sample_names = process_bcs(barcodes_csv, mismatch_5p)
 
-    check_N_position(five_p_bcs, "5") # check 3' later so that different 5' barcodes can have different types of 3' bcd
+    check_N_position(five_p_bcs, "5")  # check 3' later so that different 5' barcodes can have different types of 3' bcd
 
     # remove files from previous runs
     clean_files(output_directory, save_name)
@@ -1331,29 +1373,31 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
 
     # /# make a bunch of workers
     workers, all_conn_r, all_conn_w = start_workers(n_workers=threads,
-                                                    input_file=file_name, 
+                                                    input_file=file_name,
                                                     need_work_queue=need_work_queue,
-                                                    adapter=adapter, 
+                                                    adapter=adapter,
                                                     five_p_bcs=five_p_bcs,
-                                                    three_p_bcs=three_p_bcs, 
+                                                    three_p_bcs=three_p_bcs,
                                                     save_name=save_name,
-                                                    total_demultiplexed=total_demultiplexed, 
-                                                    total_reads_assigned=total_reads_assigned, 
+                                                    total_demultiplexed=total_demultiplexed,
+                                                    total_reads_assigned=total_reads_assigned,
                                                     total_reads_qtrimmed=total_reads_qtrimmed,
-                                                    total_reads_adaptor_trimmed=total_reads_adaptor_trimmed, 
+                                                    total_reads_adaptor_trimmed=total_reads_adaptor_trimmed,
                                                     total_reads_5p_no_3p=total_reads_5p_no_3p,
-                                                    min_score_5_p=min_score_5_p, 
+                                                    min_score_5_p=min_score_5_p,
                                                     three_p_mismatches=three_p_mismatches,
-                                                    linked_bcs=linked_bcs, 
+                                                    linked_bcds=linked_bcds,
                                                     three_p_trim_q=three_p_trim_q,
                                                     ultra_mode=ultra_mode,
                                                     output_directory=output_directory,
                                                     q5=q5,
                                                     i2=i2,
                                                     adapter2=adapter2,
-                                                    min_trim = min_trim,
+                                                    min_trim=min_trim,
                                                     ignore_no_match=ignore_no_match,
-                                                    final_min_length=final_min_length)
+                                                    final_min_length=final_min_length,
+                                                    dont_build_reference=dont_build_reference,
+                                                    keep_barcode=keep_barcode)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
