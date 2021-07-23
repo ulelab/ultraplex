@@ -31,7 +31,8 @@ if USE_CYTHON:
 # This call to setup() does all the work
 setup(
     name="ultraplex",
-    version="1.2.0",
+    version="1.2.3",
+	python_requires='>=3.7',
     description="fastq demultiplexer",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -45,8 +46,7 @@ setup(
     packages=find_packages(),
 	install_requires=[
         'dnaio>=0.5.0',
-        'xopen~=1.0.0',
-        "dataclasses>=0.8; python_version>='3.6'",
+        'xopen~=1.0.0'
     ],
     classifiers=[
         "License :: OSI Approved :: MIT License",
