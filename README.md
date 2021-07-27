@@ -170,5 +170,5 @@ When Ultraplex is run, it first estimates how much free space is needed for the 
 When using very long barcodes, reference building can take a long time. Select this option to skip the reference building step, which for long barcodes will be faster overall.
 
 ### Keep barcodes (-kbc, --keep_barcodes)
-This option keeps barcodes and UMIs in the read after demultiplexing - note that UMIs will still be moved to the read header.
+This option keeps barcodes and UMIs in the read after demultiplexing - note that UMIs will still be added to the read header.
 
