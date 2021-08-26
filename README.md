@@ -172,3 +172,5 @@ When using very long barcodes, reference building can take a long time. Select t
 ### Keep barcodes (-kbc, --keep_barcodes)
 This option keeps barcodes and UMIs in the read after demultiplexing - note that UMIs will still be added to the read header.
 
+### Ignore no match (-inm, --ignore_no_match)
+This option does not write out reads for which there was no barcode match, which may save time.
