@@ -194,7 +194,7 @@ def make_all_seqs(l):
 	"""
     if l > 8:
         print("Warning - large barcodes detected!")
-        print("It may best faster to use option '--dont_build_reference'!")
+        print("It may be faster to use option '--dont_build_reference'!")
 
     nts = ['A', "C", "G", "T", "N"]
 
