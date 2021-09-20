@@ -163,7 +163,8 @@ When demultiplexing using 3’ adapters using the forward read (i.e. when single
 
 ### Output file prefix (-o, --outputprefix):
 A prefix that is added to the output files to help identify which sequencing run they are derived from. By default this is “demux”.
-Ignore free space warning (-ig, --ignore_space_warning):
+
+### Ignore free space warning (-ig, --ignore_space_warning):
 When Ultraplex is run, it first estimates how much free space is needed for the job to complete, and then checks whether there is enough space. If there is not, it will not run. This option overrides this behaviour, allowing Ultraplex to run even if it does not think there is enough free storage space.
 
 ### Don't build reference (-dbr, --dont_build_reference)
