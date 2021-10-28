@@ -31,7 +31,7 @@ if USE_CYTHON:
 # This call to setup() does all the work
 setup(
     name="ultraplex",
-    version="1.2.3",
+    version="1.2.4",
 	python_requires='>=3.7',
     description="fastq demultiplexer",
     long_description=README,

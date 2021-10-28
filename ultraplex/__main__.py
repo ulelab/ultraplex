@@ -627,7 +627,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     except:
                         linked = "_none_"
 
-                    if linked == "_none_":  # no 3' barcodes linked to this 3' barcode, this includes "no_match" 5'
+                    if linked == "_none_":  # no 3' barcodes linked to this 5' barcode, this includes "no_match" 5'
                         # barcdoes
                         comb_bc = '_5bc_' + five_p_bc
 
@@ -765,10 +765,11 @@ def remove_mate_adapter(read, to_remove, bcd, trimmed):
     if trimmed:  # then remove the barcode which should, by definition, be there
         read = read[0:len(read.sequence) - len(bcd)]
     else:
-        remove_rc = rev_c(to_remove)  # this is now "b5b4b3b2b1"
-        adapter = [BackAdapter(remove_rc, max_error_rate=0.1, min_overlap=2)]
-        cutter = AdapterCutter(adapter, times=1)
-        read = cutter(read, ModificationInfo(read))
+        if len(to_remove) > 0:
+            remove_rc = rev_c(to_remove)  # this is now "b5b4b3b2b1"
+            adapter = [BackAdapter(remove_rc, max_error_rate=0.1, min_overlap=2)]
+            cutter = AdapterCutter(adapter, times=1)
+            read = cutter(read, ModificationInfo(read))
 
     return read
 
