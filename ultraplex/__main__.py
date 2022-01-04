@@ -256,38 +256,53 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_sco
         else:
             assigned = d[bc]
 
-        if reverse_complement:  # the sequence that will be removed
-            to_remove = read.sequence[0:len(assigned)]
-        else:
-            # then it's not paired end, so we don't care
-            to_remove = None
+        # if reverse_complement:  # the sequence that will be removed
+        #     to_remove = read.sequence[0:len(assigned)]
+        # else:
+        #     # then it's not paired end, so we don't care
+        #     to_remove = ""
 
-        if not assigned == "no_match":  # ie there is a match - then we need to trim
+        if assigned == "no_match":
+            to_remove = ""
+
+        else:  # ie there is a match - then we need to trim
+            
             bc_length = len(assigned)
-            # add to umi
+            
+            # Find the positions in the read which contain the UMI
             umi_poses = [a - bc_length for a, b in enumerate(assigned) if b == 'N']
             umi_positions_to_extract = [x + seq_length for x in umi_poses]
 
             # check it's long enough to contain UMIs, or that there are no UMIs
             long_enough = False  # assume false
+            
             if len(umi_poses) > 0:
                 if min(umi_positions_to_extract) >= 0:
                     long_enough = True
-            if len(umi_poses) == 0:
+            if len(umi_poses) == 0:  # no UMI
                 long_enough = True
 
+            # Extract the UMI
             if long_enough:
                 umi = ''.join(sequence[a] for a in umi_positions_to_extract)
                 length = len(assigned)
                 if not keep_barcodes:
                     sequence = sequence[0:(len(read) - length)]
                     qualities = qualities[0:(len(read.qualities) - length)]
+
+                if reverse_complement:  # the sequence that will be removed
+                    to_remove = read.sequence[0:len(assigned)]
+                else:
+                    # then it's not paired end, so we don't care
+                    to_remove = ""
+            
             else:  # barcode assigned, but read too short to contain full umi
                 assigned = "no_match"
+                to_remove = ""
 
     else:  # read was too short for barcode to be extracted
         assigned = "no_match"
-        to_remove = None
+        to_remove = ""
 
     if add_umi:
         if "rbc:" in read.name:
@@ -302,6 +317,7 @@ def three_p_demultiplex(read, d, add_umi, linked_bcds, linked_bcds_no_N, min_sco
     else:
         read.sequence = sequence
         read.qualities = qualities
+
 
     return read, assigned, umi, to_remove
 

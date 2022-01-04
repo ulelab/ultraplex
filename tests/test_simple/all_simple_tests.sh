@@ -61,3 +61,7 @@ python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/rea
 
 # check it works without UMIs
 python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_no_umi_3.csv -d tests/test_simple/no_umi -o paired_no_umi
+
+# Check that it works with v v long UMIs
+python3 ultraplex -i tests/test_simple/reads1.fastq.gz -i2 tests/test_simple/reads2.fastq.gz -b tests/test_simple/barcodes_5_and_3_very_very_long_umi.csv -d tests/test_simple/v_v_long_umi -m5 0
+
