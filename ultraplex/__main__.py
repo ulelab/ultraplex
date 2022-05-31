@@ -374,7 +374,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  ignore_no_match,
                  final_min_length,
                  dont_build_reference,
-                 keep_barcode):
+                 keep_barcode,
+                 skip_adapter_trim):
         super().__init__()
         self._id = index  # the worker id
         self._read_pipe = read_pipe  # the pipe the reader reads data from
@@ -407,6 +408,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._barcodes_no_N = remove_Ns_from_barcodes(five_p_bcs)
         self._linked_bcds_no_N = {key: remove_Ns_from_barcodes(value) for (key, value) in linked_bcds.items()}
         self._keep_barcode = keep_barcode
+        self._skip_adapter_trim = skip_adapter_trim
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -417,20 +419,24 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
             # then it was trimmed
             reads_quality_trimmed += 1
 
-        # /# then, trim adapter
-        prev_length = len(read.sequence)
-        read = cutter(read, ModificationInfo(read))
-        if not len(read.sequence) == prev_length:
-            # then it was trimmed
-            trimmed = True
-            reads_adaptor_trimmed += 1
-        else:
+        if self._skip_adapter_trim:
             trimmed = False
-
-        if prev_length - len(read.sequence) >= self._min_trim:
-            min_trimmed = True
-        else:
             min_trimmed = False
+        else:
+            # /# then, trim adapter
+            prev_length = len(read.sequence)
+            read = cutter(read, ModificationInfo(read))
+            if not len(read.sequence) == prev_length:
+                # then it was trimmed
+                trimmed = True
+                reads_adaptor_trimmed += 1
+            else:
+                trimmed = False
+
+            if prev_length - len(read.sequence) >= self._min_trim:
+                min_trimmed = True
+            else:
+                min_trimmed = False
 
         return read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed
 
@@ -932,7 +938,7 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                   total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
                   min_score_5_p, three_p_mismatches, linked_bcds, three_p_trim_q,
                   ultra_mode, output_directory, final_min_length, q5, i2, adapter2, min_trim,
-                  ignore_no_match, dont_build_reference, keep_barcode):
+                  ignore_no_match, dont_build_reference, keep_barcode, skip_adapter_trim):
     """
 	This function starts all the workers
 	"""
@@ -977,7 +983,8 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                ignore_no_match=ignore_no_match,
                                final_min_length=final_min_length,
                                dont_build_reference=dont_build_reference,
-                               keep_barcode=keep_barcode)
+                               keep_barcode=keep_barcode,
+                               skip_adapter_trim=skip_adapter_trim)
 
         worker.start()
         workers.append(worker)
@@ -1315,6 +1322,9 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                           help="Do not remove barcodes/UMIs from the read (UMIs will still be moved to the "
                                "read header)")
 
+    optional.add_argument("--skip_adapter_trim", default=False, action="store_true",
+                          help="Do not perform adapter trimming")
+
     parser._action_groups.append(optional)
     args = parser.parse_args()
 
@@ -1414,7 +1424,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     ignore_no_match=ignore_no_match,
                                                     final_min_length=final_min_length,
                                                     dont_build_reference=dont_build_reference,
-                                                    keep_barcode=keep_barcode)
+                                                    keep_barcode=keep_barcode,
+                                                    skip_adaptor_trim=args.skip_adaptor_trim)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
