@@ -653,11 +653,12 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         # barcdoes
                         comb_bc = '_5bc_' + five_p_bc
 
-                        # remove the 5' barcoded adapter from reverse read
-                        read2 = remove_mate_adapter(read=read2,
-                                                    to_remove=to_remove_5,
-                                                    bcd=five_p_bc,
-                                                    trimmed=trimmed2)
+                        if not self._skip_adapter_trim:
+                            # remove the 5' barcoded adapter from reverse read
+                            read2 = remove_mate_adapter(read=read2,
+                                                        to_remove=to_remove_5,
+                                                        bcd=five_p_bc,
+                                                        trimmed=trimmed2)
 
                         if len(read1) >= self._final_min_length and len(read2) >= self._final_min_length:
                             try:
@@ -691,16 +692,17 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                             else:  # if rbc is already there
                                 read.name = read.name + umi_3
 
-                        # remove the 5' bcded adapter from the reverse read
-                        read2 = remove_mate_adapter(read=read2,
-                                                    to_remove=to_remove_5,
-                                                    bcd=five_p_bc,
-                                                    trimmed=trimmed2)
-                        # remove the 3' adapter from the forward read
-                        read1 = remove_mate_adapter(read=read1,
-                                                    to_remove=to_remove_3,
-                                                    bcd=three_p_bc,
-                                                    trimmed=trimmed1)
+                        if not self._skip_adapter_trim:
+                            # remove the 5' bcded adapter from the reverse read
+                            read2 = remove_mate_adapter(read=read2,
+                                                        to_remove=to_remove_5,
+                                                        bcd=five_p_bc,
+                                                        trimmed=trimmed2)
+                            # remove the 3' adapter from the forward read
+                            read1 = remove_mate_adapter(read=read1,
+                                                        to_remove=to_remove_3,
+                                                        bcd=three_p_bc,
+                                                        trimmed=trimmed1)
 
                         if not three_p_bc == "no_match":
                             assigned_reads += 1
