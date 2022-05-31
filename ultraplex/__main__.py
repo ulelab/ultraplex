@@ -1425,7 +1425,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     final_min_length=final_min_length,
                                                     dont_build_reference=dont_build_reference,
                                                     keep_barcode=keep_barcode,
-                                                    skip_adaptor_trim=args.skip_adaptor_trim)
+                                                    skip_adapter_trim=args.skip_adapter_trim)
 
     print("Demultiplexing...")
     reader_process = ReaderProcess(file_name, all_conn_w,
