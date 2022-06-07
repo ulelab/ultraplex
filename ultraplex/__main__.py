@@ -16,6 +16,8 @@ import shutil
 from pathlib import Path
 import logging
 from math import log10, floor
+from setuptools_scm import get_version
+
 
 
 def round_sig(x, sig=2):
@@ -1254,6 +1256,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     parser = argparse.ArgumentParser(description='Ultra-fast demultiplexing of fastq files.')
     optional = parser._action_groups.pop()
     required = parser.add_argument_group('required arguments')
+    # version
+    parser.add_argument('-v','--version', action='version', version=get_version())
     # input
     required.add_argument('-i', "--inputfastq", type=str, required=True,
                           help='fastq file to be demultiplexed')
