@@ -847,8 +847,8 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
             output = '\n'.join(this_out) + '\n'
             
-            return(total_reads)
             file.write(output)
+            return total_reads
 
     elif write_this:
         # /# work out this filename
@@ -879,8 +879,9 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
             output = '\n'.join(this_out) + '\n'
             
-            return(total_reads)
+
             file.write(output.encode())
+            return total_reads
 
 
 def five_p_demulti(read, five_p_bc_pos, five_p_umi_poses,
