@@ -17,7 +17,23 @@ from pathlib import Path
 import logging
 from math import log10, floor
 from setuptools_scm import get_version
+import subprocess
+import csv
 
+
+# for logging
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+
+    formatter = logging.Formatter('%(asctime)-15s %(levelname)-8s %(message)s')
+    handler = logging.FileHandler(log_file)        
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
 
 
 def round_sig(x, sig=2):
@@ -437,7 +453,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         return read, trimmed, reads_quality_trimmed, reads_adaptor_trimmed, min_trimmed
 
     def run(self):
-
+        logger = logging.getLogger("first_logger") 
         while True:  # /# once spawned, this keeps running forever, until poison pill recieved
             if self._i2 is False:  # then it's single end
                 # Notify reader that we need data
@@ -548,9 +564,11 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         except KeyError:
                             this_buffer_dict[comb_bc] = [read]
 
+
                 ## Write out! ##
+                read_number = {}
                 for demulti_type, reads in this_buffer_dict.items():
-                    write_tmp_files(output_dir=self._output_directory,
+                    read_number[demulti_type] = write_tmp_files(output_dir=self._output_directory,
                                     save_name=self._save_name,
                                     demulti_type=demulti_type,
                                     worker_id=self._id,
@@ -715,10 +733,10 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                 this_buffer_dict_2[comb_bc] = [read2]
 
                 ## Write out! ##
-
+                read_number = {}
                 for demulti_type, reads in this_buffer_dict_1.items():
                     demulti_type = demulti_type + "_Fwd"
-                    write_tmp_files(output_dir=self._output_directory,
+                    read_number[demulti_type] = write_tmp_files(output_dir=self._output_directory,
                                     save_name=self._save_name,
                                     demulti_type=demulti_type,
                                     worker_id=self._id,
@@ -728,7 +746,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                 for demulti_type, reads in this_buffer_dict_2.items():
                     demulti_type = demulti_type + "_Rev"
-                    write_tmp_files(output_dir=self._output_directory,
+                    read_number[demulti_type] = write_tmp_files(output_dir=self._output_directory,
                                     save_name=self._save_name,
                                     demulti_type=demulti_type,
                                     worker_id=self._id,
@@ -736,13 +754,16 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                     ultra_mode=self._ultra_mode,
                                     ignore_no_match=self._ignore_no_match)
 
+            for k, v in read_number.items():
+                logger.info("{:<8} {:<15}".format(k, v))
+
             # LOG reads processed
             prev_total = self._total_demultiplexed.get()
             new_total = prev_total[0] + reads_written
             if new_total - prev_total[1] >= 1_000_000:
                 prog_msg = str(new_total // 1_000_000) + ' million reads processed'
                 print(prog_msg)
-                logging.info(prog_msg)
+                logger.info(prog_msg)
                 last_printed = new_total
             else:
                 last_printed = prev_total[1]
@@ -810,10 +831,11 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
         with open(filename, append_write) as file:
             this_out = []
+            total_reads = 0
             for counter, read in enumerate(reads):
                 # Quality control:
                 assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-
+                total_reads += 1
                 if counter == 0:
                     umi_l = len(read.name.split("rbc:")[1])
                 assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
@@ -824,7 +846,8 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
                 this_out.append(read.qualities)
 
             output = '\n'.join(this_out) + '\n'
-            # print(output)
+            
+            return(total_reads)
             file.write(output)
 
     elif write_this:
@@ -839,11 +862,12 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
 
         with gzip.open(filename, append_write) as file:
             this_out = []
+            total_reads = 0
             for counter, read in enumerate(reads):
 
                 # Quality control:
                 assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
-
+                total_reads += 1
                 if counter == 0:
                     umi_l = len(read.name.split("rbc:")[1])
                 assert len(read.name.split("rbc:")[1]) == umi_l, "UMIs are different lengths"
@@ -854,7 +878,8 @@ def write_tmp_files(output_dir, save_name, demulti_type, worker_id, reads,
                 this_out.append(read.qualities)
 
             output = '\n'.join(this_out) + '\n'
-            # print(output)
+            
+            return(total_reads)
             file.write(output.encode())
 
 
@@ -1333,11 +1358,11 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
         if not os.path.exists(output_directory):
             os.mkdir(output_directory)
 
-    logging.basicConfig(level=logging.DEBUG, filename=output_directory + "ultraplex_" + str(start) + ".log",
-                        filemode="a+", format="%(asctime)-15s %(levelname)-8s %(message)s")
+    # It's logging time bbyyy
+    logger = setup_logger('first_logger', output_directory + "ultraplex_" + str(start) + ".log",level=logging.DEBUG)
 
     print(args)
-    logging.info(args)
+    logger.info(args)
 
     file_name = args.inputfastq
     barcodes_csv = args.barcodes
@@ -1433,7 +1458,7 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     finishing_msg = "Demultiplexing complete! " + str(
         total_processed_reads) + ' reads processed in ' + runtime_seconds + ' seconds'
     print(finishing_msg)
-    logging.info(finishing_msg)
+    logger.info(finishing_msg)
 
     # More stats for logging
     total_qtrim = total_reads_qtrimmed.get()
@@ -1445,15 +1470,17 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     total_ass = total_reads_assigned.get()
     total_ass_percent = (total_ass / total_processed_reads) * 100
     qmsg = str(total_qtrim) + " (" + str(round_sig(total_qtrim_percent, 3)) + "%) reads quality trimmed"
-    logging.info(qmsg)
+    logger.info(qmsg)
     amsg = str(total_adaptortrim) + " (" + str(round_sig(total_adaptortrim_percent, 3)) + "%) reads adaptor trimmed"
-    logging.info(amsg)
+    logger.info(amsg)
     fivemsg = str(total_5p_no3) + " (" + str(
         round_sig(total_5p_no3_percent, 3)) + "%) reads with correct 5' bc but 3' bc not found"
-    logging.info(fivemsg)
+    logger.info(fivemsg)
     assmsg = str(total_ass) + " (" + str(
         round_sig(total_ass_percent, 3)) + "%) reads correctly assigned to sample files"
-    logging.info(assmsg)
+    logger.info(assmsg)
+
+
 
 
 if __name__ == "__main__":
