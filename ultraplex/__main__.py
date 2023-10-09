@@ -3,7 +3,7 @@ from xopen import xopen
 import os
 import traceback
 import io
-from multiprocessing import Process, Pipe, Queue
+from multiprocess import Process, Pipe, Queue
 from typing import BinaryIO
 from qualtrim_new import quality_trim_index
 from ultraplex.modifiers import AdapterCutter, ModificationInfo

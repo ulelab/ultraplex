@@ -6,10 +6,10 @@ import logging
 import functools
 from typing import List, IO, Optional, BinaryIO, TextIO, Any, Tuple
 from abc import ABC, abstractmethod
-from multiprocessing import Process, Pipe, Queue
+from multiprocess import Process, Pipe, Queue
 from pathlib import Path
-import multiprocessing.connection
-from multiprocessing.connection import Connection
+import multiprocess.connection
+from multiprocess.connection import Connection
 import traceback
 
 from xopen import xopen
@@ -741,7 +741,7 @@ class ParallelPipelineRunner(PipelineRunner):
         stats = None
         n = 0  # A running total of the number of processed reads (for progress indicator)
         while connections:
-            ready_connections = multiprocessing.connection.wait(connections)
+            ready_connections = multiprocess.connection.wait(connections)
             for connection in ready_connections:
                 chunk_index = connection.recv()
                 if chunk_index == -1:

@@ -2,7 +2,7 @@ import re
 import sys
 import time
 import errno
-import multiprocessing
+import multiprocess
 import logging
 
 from xopen import xopen
@@ -34,11 +34,11 @@ def available_cpu_count():
         if m:
             res = bin(int(m.group(1).replace(",", ""), 16)).count("1")
             if res > 0:
-                return min(res, multiprocessing.cpu_count())
+                return min(res, multiprocess.cpu_count())
     except OSError:
         pass
 
-    return multiprocessing.cpu_count()
+    return multiprocess.cpu_count()
 
 
 def raise_open_files_limit(n):

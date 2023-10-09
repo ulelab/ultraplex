@@ -1,0 +1,6 @@
+build/*
+dist/*
+*log
+ultraplex.egg*
+*fastq.gz
+ultraplex/_pycache_/*
