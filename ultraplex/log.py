@@ -13,9 +13,10 @@ class NiceFormatter(logging.Formatter):
 
     Based on http://stackoverflow.com/a/9218261/715090 .
     """
+
     def format(self, record):
         if record.levelno not in (logging.INFO, REPORT):
-            record.msg = '{}: {}'.format(record.levelname, record.msg)
+            record.msg = "{}: {}".format(record.levelname, record.msg)
         return super().format(record)
 
 
@@ -26,7 +27,7 @@ def setup_logging(logger, stdout=False, minimal=False, quiet=False, debug=False)
     # For --report=minimal, we need this custom log level because we want to
     # print nothing except the minimal report and therefore cannot use the
     # INFO level (and the ERROR level would give us an 'ERROR:' prefix).
-    logging.addLevelName(REPORT, 'REPORT')
+    logging.addLevelName(REPORT, "REPORT")
 
     # Due to backwards compatibility, logging output is sent to standard output
     # instead of standard error if the -o option is used.

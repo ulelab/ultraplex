@@ -1,9 +1,9 @@
 __all__ = [
-    'Aligner',
-    'PrefixComparer',
-    'SuffixComparer',
-    'hamming_sphere',
-    'hamming_environment',
+    "Aligner",
+    "PrefixComparer",
+    "SuffixComparer",
+    "hamming_sphere",
+    "hamming_environment",
 ]
 
 from _align_new import Aligner, PrefixComparer, SuffixComparer
@@ -41,8 +41,8 @@ def hamming_sphere(s, k):
     for i in range(n - k + 1):
         prefix = s[:i]
         c = s[i]
-        suffix = s[i+1:]
-        for ch in 'ACGT':
+        suffix = s[i + 1 :]
+        for ch in "ACGT":
             if ch == c:
                 continue
             for t in hamming_sphere(suffix, k - 1):

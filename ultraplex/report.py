@@ -6,12 +6,32 @@ import textwrap
 from collections import Counter
 from typing import Any, Optional, List
 from .adapters import (
-    EndStatistics, AdapterStatistics, FrontAdapter, NonInternalFrontAdapter, PrefixAdapter,
-    BackAdapter, NonInternalBackAdapter, SuffixAdapter, AnywhereAdapter, LinkedAdapter,
+    EndStatistics,
+    AdapterStatistics,
+    FrontAdapter,
+    NonInternalFrontAdapter,
+    PrefixAdapter,
+    BackAdapter,
+    NonInternalBackAdapter,
+    SuffixAdapter,
+    AnywhereAdapter,
+    LinkedAdapter,
 )
-from .modifiers import (SingleEndModifier, PairedModifier, QualityTrimmer, NextseqQualityTrimmer,
-    AdapterCutter, PairedAdapterCutter, ReverseComplementer)
-from .filters import WithStatistics, TooShortReadFilter, TooLongReadFilter, NContentFilter
+from .modifiers import (
+    SingleEndModifier,
+    PairedModifier,
+    QualityTrimmer,
+    NextseqQualityTrimmer,
+    AdapterCutter,
+    PairedAdapterCutter,
+    ReverseComplementer,
+)
+from .filters import (
+    WithStatistics,
+    TooShortReadFilter,
+    TooLongReadFilter,
+    NContentFilter,
+)
 
 
 def safe_divide(numerator, denominator):
@@ -31,8 +51,7 @@ def add_if_not_none(a, b):
 
 class Statistics:
     def __init__(self) -> None:
-        """
-        """
+        """ """
         self.paired = None  # type: Optional[bool]
         self.did_quality_trimming = None  # type: Optional[bool]
         self.too_short = None
@@ -55,14 +74,17 @@ class Statistics:
         if self.paired is None:
             self.paired = other.paired
         elif self.paired != other.paired:
-            raise ValueError('Incompatible Statistics: paired is not equal')
+            raise ValueError("Incompatible Statistics: paired is not equal")
         if self.did_quality_trimming is None:
             self.did_quality_trimming = other.did_quality_trimming
         elif self.did_quality_trimming != other.did_quality_trimming:
-            raise ValueError('Incompatible Statistics: did_quality_trimming is not equal')
+            raise ValueError(
+                "Incompatible Statistics: did_quality_trimming is not equal"
+            )
 
         self.reverse_complemented = add_if_not_none(
-            self.reverse_complemented, other.reverse_complemented)
+            self.reverse_complemented, other.reverse_complemented
+        )
         self.too_short = add_if_not_none(self.too_short, other.too_short)
         self.too_long = add_if_not_none(self.too_long, other.too_long)
         self.too_many_n = add_if_not_none(self.too_many_n, other.too_many_n)
@@ -74,7 +96,9 @@ class Statistics:
             self.quality_trimmed_bp[i] += other.quality_trimmed_bp[i]
             if self.adapter_stats[i] and other.adapter_stats[i]:
                 if len(self.adapter_stats[i]) != len(other.adapter_stats[i]):
-                    raise ValueError('Incompatible Statistics objects (adapter_stats length)')
+                    raise ValueError(
+                        "Incompatible Statistics objects (adapter_stats length)"
+                    )
                 for j in range(len(self.adapter_stats[i])):
                     self.adapter_stats[i][j] += other.adapter_stats[i][j]
             elif other.adapter_stats[i]:
@@ -139,7 +163,9 @@ class Statistics:
                 self.adapter_stats[i] = list(modifier.adapter_statistics.values())
             elif isinstance(modifier, ReverseComplementer):
                 self.with_adapters[i] += modifier.adapter_cutter.with_adapters
-                self.adapter_stats[i] = list(modifier.adapter_cutter.adapter_statistics.values())
+                self.adapter_stats[i] = list(
+                    modifier.adapter_cutter.adapter_statistics.values()
+                )
                 self.reverse_complemented = modifier.reverse_complemented
 
     @property
@@ -217,7 +243,9 @@ def histogram(end_statistics: EndStatistics, n: int, gc_content: float):
     d = end_statistics.lengths
     errors = end_statistics.errors
 
-    match_probabilities = end_statistics.random_match_probabilities(gc_content=gc_content)
+    match_probabilities = end_statistics.random_match_probabilities(
+        gc_content=gc_content
+    )
     print("length", "count", "expect", "max.err", "error counts", sep="\t", file=sio)
     for length in sorted(d):
         # when length surpasses adapter_length, the
@@ -225,12 +253,15 @@ def histogram(end_statistics: EndStatistics, n: int, gc_content: float):
         expect = n * match_probabilities[min(len(end_statistics.sequence), length)]
         count = d[length]
         max_errors = max(errors[length].keys())
-        errs = ' '.join(str(errors[length][e]) for e in range(max_errors + 1))
+        errs = " ".join(str(errors[length][e]) for e in range(max_errors + 1))
         print(
             length,
             count,
             "{:.1F}".format(expect),
-            int(end_statistics.max_error_rate * min(length, len(end_statistics.sequence))),
+            int(
+                end_statistics.max_error_rate
+                * min(length, len(end_statistics.sequence))
+            ),
             errs,
             sep="\t",
             file=sio,
@@ -240,8 +271,7 @@ def histogram(end_statistics: EndStatistics, n: int, gc_content: float):
 
 class AdjacentBaseStatistics:
     def __init__(self, bases):
-        """
-        """
+        """ """
         self.bases = bases
         self._warnbase = None
         total = sum(self.bases.values())
@@ -249,17 +279,17 @@ class AdjacentBaseStatistics:
             self._fractions = None
         else:
             self._fractions = []
-            for base in ['A', 'C', 'G', 'T', '']:
-                text = base if base != '' else 'none/other'
+            for base in ["A", "C", "G", "T", ""]:
+                text = base if base != "" else "none/other"
                 fraction = 1.0 * self.bases[base] / total
                 self._fractions.append((text, 1.0 * self.bases[base] / total))
-                if fraction > 0.8 and base != '':
+                if fraction > 0.8 and base != "":
                     self._warnbase = text
             if total < 20:
                 self._warnbase = None
 
     def __repr__(self):
-        return 'AdjacentBaseStatistics(bases={})'.format(self.bases)
+        return "AdjacentBaseStatistics(bases={})".format(self.bases)
 
     @property
     def should_warn(self):
@@ -269,13 +299,21 @@ class AdjacentBaseStatistics:
         if not self._fractions:
             return ""
         sio = StringIO()
-        print('Bases preceding removed adapters:', file=sio)
+        print("Bases preceding removed adapters:", file=sio)
         for text, fraction in self._fractions:
-            print('  {}: {:.1%}'.format(text, fraction), file=sio)
+            print("  {}: {:.1%}".format(text, fraction), file=sio)
         if self.should_warn:
-            print('WARNING:', file=sio)
-            print('    The adapter is preceded by "{}" extremely often.'.format(self._warnbase), file=sio)
-            print("    The provided adapter sequence could be incomplete at its 3' end.", file=sio)
+            print("WARNING:", file=sio)
+            print(
+                '    The adapter is preceded by "{}" extremely often.'.format(
+                    self._warnbase
+                ),
+                file=sio,
+            )
+            print(
+                "    The provided adapter sequence could be incomplete at its 3' end.",
+                file=sio,
+            )
         return sio.getvalue()
 
 
@@ -287,27 +325,36 @@ def full_report(stats: Statistics, time: float, gc_content: float) -> str:  # no
     sio = StringIO()
 
     def print_s(*args, **kwargs):
-        kwargs['file'] = sio
+        kwargs["file"] = sio
         print(*args, **kwargs)
 
-    print_s("Finished in {:.2F} s ({:.0F} us/read; {:.2F} M reads/minute).".format(
-        time, 1E6 * time / stats.n, stats.n / time * 60 / 1E6))
+    print_s(
+        "Finished in {:.2F} s ({:.0F} us/read; {:.2F} M reads/minute).".format(
+            time, 1e6 * time / stats.n, stats.n / time * 60 / 1e6
+        )
+    )
 
     report = "\n=== Summary ===\n\n"
     if stats.paired:
-        report += textwrap.dedent("""\
+        report += textwrap.dedent(
+            """\
         Total read pairs processed:      {o.n:13,d}
           Read 1 with adapter:           {o.with_adapters[0]:13,d} ({o.with_adapters_fraction[0]:.1%})
           Read 2 with adapter:           {o.with_adapters[1]:13,d} ({o.with_adapters_fraction[1]:.1%})
-        """)
+        """
+        )
     else:
-        report += textwrap.dedent("""\
+        report += textwrap.dedent(
+            """\
         Total reads processed:           {o.n:13,d}
         Reads with adapters:             {o.with_adapters[0]:13,d} ({o.with_adapters_fraction[0]:.1%})
-        """)
+        """
+        )
     if stats.reverse_complemented is not None:
-        report += "Reverse-complemented:            " \
-                  "{o.reverse_complemented:13,d} ({o.reverse_complemented_fraction:.1%})\n"
+        report += (
+            "Reverse-complemented:            "
+            "{o.reverse_complemented:13,d} ({o.reverse_complemented_fraction:.1%})\n"
+        )
     if stats.too_short is not None:
         report += "{pairs_or_reads} that were too short:       {o.too_short:13,d} ({o.too_short_fraction:.1%})\n"
     if stats.too_long is not None:
@@ -315,11 +362,13 @@ def full_report(stats: Statistics, time: float, gc_content: float) -> str:  # no
     if stats.too_many_n is not None:
         report += "{pairs_or_reads} with too many N:           {o.too_many_n:13,d} ({o.too_many_n_fraction:.1%})\n"
 
-    report += textwrap.dedent("""\
+    report += textwrap.dedent(
+        """\
     {pairs_or_reads} written (passing filters): {o.written:13,d} ({o.written_fraction:.1%})
 
     Total basepairs processed: {o.total:13,d} bp
-    """)
+    """
+    )
     if stats.paired:
         report += "  Read 1: {o.total_bp[0]:13,d} bp\n"
         report += "  Read 2: {o.total_bp[1]:13,d} bp\n"
@@ -346,31 +395,45 @@ def full_report(stats: Statistics, time: float, gc_content: float) -> str:  # no
             total = total_front + total_back
             reverse_complemented = adapter_statistics.reverse_complemented
             adapter = adapter_statistics.adapter
-            if isinstance(adapter, (BackAdapter, NonInternalBackAdapter, SuffixAdapter)):
+            if isinstance(
+                adapter, (BackAdapter, NonInternalBackAdapter, SuffixAdapter)
+            ):
                 assert total_front == 0
-            if isinstance(adapter, (FrontAdapter, NonInternalFrontAdapter, PrefixAdapter)):
+            if isinstance(
+                adapter, (FrontAdapter, NonInternalFrontAdapter, PrefixAdapter)
+            ):
                 assert total_back == 0
 
             if stats.paired:
-                extra = 'First read: ' if which_in_pair == 0 else 'Second read: '
+                extra = "First read: " if which_in_pair == 0 else "Second read: "
             else:
-                extra = ''
+                extra = ""
 
             print_s("=" * 3, extra + "Adapter", adapter_statistics.name, "=" * 3)
             print_s()
 
             if isinstance(adapter, LinkedAdapter):
-                print_s("Sequence: {}...{}; Type: linked; Length: {}+{}; "
+                print_s(
+                    "Sequence: {}...{}; Type: linked; Length: {}+{}; "
                     "5' trimmed: {} times; 3' trimmed: {} times".format(
                         adapter_statistics.front.sequence,
                         adapter_statistics.back.sequence,
                         len(adapter_statistics.front.sequence),
                         len(adapter_statistics.back.sequence),
-                        total_front, total_back))
+                        total_front,
+                        total_back,
+                    )
+                )
             else:
-                print_s("Sequence: {}; Type: {}; Length: {}; Trimmed: {} times".
-                    format(adapter_statistics.front.sequence, adapter.description,
-                        len(adapter_statistics.front.sequence), total), end="")
+                print_s(
+                    "Sequence: {}; Type: {}; Length: {}; Trimmed: {} times".format(
+                        adapter_statistics.front.sequence,
+                        adapter.description,
+                        len(adapter_statistics.front.sequence),
+                        total,
+                    ),
+                    end="",
+                )
             if stats.reverse_complemented is not None:
                 print_s("; Reverse-complemented: {} times".format(reverse_complemented))
             else:
@@ -380,7 +443,9 @@ def full_report(stats: Statistics, time: float, gc_content: float) -> str:  # no
                 continue
             if isinstance(adapter, AnywhereAdapter):
                 print_s(total_front, "times, it overlapped the 5' end of a read")
-                print_s(total_back, "times, it overlapped the 3' end or was within the read")
+                print_s(
+                    total_back, "times, it overlapped the 3' end or was within the read"
+                )
                 print_s()
                 print_s(error_ranges(adapter_statistics.front))
                 print_s("Overview of removed sequences (5')")
@@ -397,25 +462,31 @@ def full_report(stats: Statistics, time: float, gc_content: float) -> str:  # no
                 print_s()
                 print_s("Overview of removed sequences at 3' end")
                 print_s(histogram(adapter_statistics.back, stats.n, gc_content))
-            elif isinstance(adapter, (FrontAdapter, NonInternalFrontAdapter, PrefixAdapter)):
+            elif isinstance(
+                adapter, (FrontAdapter, NonInternalFrontAdapter, PrefixAdapter)
+            ):
                 print_s()
                 print_s(error_ranges(adapter_statistics.front))
                 print_s("Overview of removed sequences")
                 print_s(histogram(adapter_statistics.front, stats.n, gc_content))
             else:
-                assert isinstance(adapter, (BackAdapter, NonInternalBackAdapter, SuffixAdapter))
+                assert isinstance(
+                    adapter, (BackAdapter, NonInternalBackAdapter, SuffixAdapter)
+                )
                 print_s()
                 print_s(error_ranges(adapter_statistics.back))
-                base_stats = AdjacentBaseStatistics(adapter_statistics.back.adjacent_bases)
+                base_stats = AdjacentBaseStatistics(
+                    adapter_statistics.back.adjacent_bases
+                )
                 warning = warning or base_stats.should_warn
                 print_s(base_stats)
                 print_s("Overview of removed sequences")
                 print_s(histogram(adapter_statistics.back, stats.n, gc_content))
 
     if warning:
-        print_s('WARNING:')
-        print_s('    One or more of your adapter sequences may be incomplete.')
-        print_s('    Please see the detailed output above.')
+        print_s("WARNING:")
+        print_s("    One or more of your adapter sequences may be incomplete.")
+        print_s("    Please see the detailed output above.")
 
     return sio.getvalue().rstrip()
 
@@ -448,15 +519,29 @@ def minimal_report(stats: Statistics, _time, _gc_content) -> str:
     warning = False
     for which_in_pair in (0, 1):
         for adapter_statistics in stats.adapter_stats[which_in_pair]:
-            if isinstance(adapter_statistics.adapter, (BackAdapter, NonInternalBackAdapter, SuffixAdapter)):
-                if AdjacentBaseStatistics(adapter_statistics.back.adjacent_bases).should_warn:
+            if isinstance(
+                adapter_statistics.adapter,
+                (BackAdapter, NonInternalBackAdapter, SuffixAdapter),
+            ):
+                if AdjacentBaseStatistics(
+                    adapter_statistics.back.adjacent_bases
+                ).should_warn:
                     warning = True
                     break
     if warning:
         fields[0] = "WARN"
     header = [
-        'status', 'in_reads', 'in_bp', 'too_short', 'too_long', 'too_many_n', 'out_reads',
-        'w/adapters', 'qualtrim_bp', 'out_bp']
+        "status",
+        "in_reads",
+        "in_bp",
+        "too_short",
+        "too_long",
+        "too_many_n",
+        "out_reads",
+        "w/adapters",
+        "qualtrim_bp",
+        "out_bp",
+    ]
     if stats.paired:
-        header += ['w/adapters2', 'qualtrim2_bp', 'out2_bp']
+        header += ["w/adapters2", "qualtrim2_bp", "out2_bp"]
     return "\t".join(header) + "\n" + "\t".join(str(x) for x in fields)
