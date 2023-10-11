@@ -19,7 +19,15 @@ from math import log10, floor
 from setuptools_scm import get_version
 import subprocess
 import csv
+from collections import defaultdict
 
+def merge_defaultdicts(d1, d2):
+    merged = defaultdict(int)
+    for key, value in d1.items():
+        merged[key] += value
+    for key, value in d2.items():
+        merged[key] += value
+    return merged
 
 # for logging
 def setup_logger(name, log_file, level=logging.INFO):
@@ -379,8 +387,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                  five_p_bcs, three_p_bcs,
                  save_name,
                  total_demultiplexed,
-                 total_reads_assigned, total_reads_qtrimmed, total_reads_adaptor_trimmed,
-                 total_reads_5p_no_3p,
+                 total_reads_assigned, total_reads_assigned_pass_length_filter, read_number, total_reads_qtrimmed, total_reads_adaptor_trimmed,
+                 total_reads_5p_no_3p, total_reads_5p_no_3p_pass_length_filter,
                  ultra_mode,
                  min_score_5_p, three_p_mismatches,
                  linked_bcds,
@@ -400,10 +408,13 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         self._end_qc = three_p_trim_q  # quality score to trim qc from 3' end
         self._start_qc = q5  # quality score to trim qc from 5' end
         self._total_demultiplexed = total_demultiplexed  # a queue which keeps track of the total number of reads processed
-        self._total_reads_assigned = total_reads_assigned  # a queue which keeps track of the total number of reads assigned to sample files
+        self._total_reads_assigned = total_reads_assigned  # a queue which keeps track of the total number of reads assigned to samples
+        self._total_reads_assigned_pass_length_filter = total_reads_assigned_pass_length_filter  # a queue which keeps track of the total number of reads assigned to sample files that pass length filter
+        self._read_number = read_number  # a queue which has a defaultdict that keeps track of the total number of reads assigned to each sample
         self._total_reads_qtrimmed = total_reads_qtrimmed  # a queue which keeps track of the total number of reads quality trimmed
         self._total_reads_adaptor_trimmed = total_reads_adaptor_trimmed  # a queue which keeps track of the total number of reads adaptor trimmed
         self._total_reads_5p_no_3p = total_reads_5p_no_3p  # a queue which keeps track of how many reads have correct 5p BC but cannot find 3p BC
+        self._total_reads_5p_no_3p_pass_length_filter = total_reads_5p_no_3p_pass_length_filter  # a queue which keeps track of how many reads have correct 5p BC but cannot find 3p BC that pass length filter
         self._adapter = adapter  # the 3' adapter
         self._final_min_length = final_min_length  # length of final written reads
         self._three_p_bcs = three_p_bcs  # not sure we need this? A list of all the 3' barcodes. But unecessary because of "linked_bcds"?
@@ -488,6 +499,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 reads_quality_trimmed = 0
                 reads_adaptor_trimmed = 0
                 five_no_three_reads = 0
+                five_no_three_reads_pass_length = 0
+                assigned_reads_pass_length = 0
 
                 for read in InputFiles(infiles).open():
                     reads_written += 1
@@ -529,6 +542,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                         if not five_p_bc == "no_match":
                             assigned_reads += 1
+                        if not five_p_bc == "no_match" and len(read) >= self._final_min_length:
+                            assigned_reads_pass_length += 1
 
                     elif min_trimmed:  # if it is linked to 3' barcodes and has been trimmed
                         read, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read,
@@ -545,9 +560,13 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                         if not three_p_bc == "no_match":
                             assigned_reads += 1
+                        if not three_p_bc == "no_match" and len(read) >= self._final_min_length:
+                            assigned_reads_pass_length += 1
 
                         if three_p_bc == "no_match":
                             five_no_three_reads += 1
+                        if three_p_bc == "no_match" and len(read) >= self._final_min_length:
+                            five_no_three_reads_pass_length += 1
 
                         comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
 
@@ -566,7 +585,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
 
                 ## Write out! ##
-                read_number = {}
+                read_number = defaultdict(int)
                 for demulti_type, reads in this_buffer_dict.items():
                     read_number[demulti_type] = write_tmp_files(output_dir=self._output_directory,
                                     save_name=self._save_name,
@@ -614,6 +633,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 reads_quality_trimmed = 0
                 reads_adaptor_trimmed = 0
                 five_no_three_reads = 0
+                five_no_three_reads_pass_length = 0
+                assigned_reads_pass_length = 0
 
                 for read1, read2 in zip(InputFiles(infiles1).open(), InputFiles(infiles2).open()):
                     # First, check that they have the same name
@@ -683,6 +704,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                         if not five_p_bc == "no_match":
                             assigned_reads += 1
+                        if not five_p_bc == "no_match" and len(read1) >= self._final_min_length and len(read2) >= self._final_min_length:
+                            assigned_reads_pass_length += 1
 
                     else:  # if there's a linked 3' barcode, no need to check if trimmed b/c P.E.
                         read2, three_p_bc, umi_3, to_remove_3 = three_p_demultiplex(read2,
@@ -718,9 +741,13 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                         if not three_p_bc == "no_match":
                             assigned_reads += 1
+                        if not three_p_bc == "no_match" and len(read1) >= self._final_min_length and len(read2) >= self._final_min_length:
+                            assigned_reads_pass_length += 1
 
                         if three_p_bc == "no_match":
                             five_no_three_reads += 1
+                        if three_p_bc == "no_match" and len(read1) >= self._final_min_length and len(read2) >= self._final_min_length:
+                            five_no_three_reads_pass_length += 1
 
                         comb_bc = '_5bc_' + five_p_bc + '_3bc_' + three_p_bc
 
@@ -733,7 +760,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                 this_buffer_dict_2[comb_bc] = [read2]
 
                 ## Write out! ##
-                read_number = {}
+                read_number = defaultdict(int)
                 for demulti_type, reads in this_buffer_dict_1.items():
                     demulti_type = demulti_type + "_Fwd"
                     read_number[demulti_type] = write_tmp_files(output_dir=self._output_directory,
@@ -753,9 +780,6 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                                     reads=reads,
                                     ultra_mode=self._ultra_mode,
                                     ignore_no_match=self._ignore_no_match)
-
-            for k, v in read_number.items():
-                logger.info("{:<8} {:<15}".format(k, v))
 
             # LOG reads processed
             prev_total = self._total_demultiplexed.get()
@@ -784,10 +808,25 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
             new_total = prev_total + assigned_reads
             self._total_reads_assigned.put(new_total)
 
+            # LOG reads assigned per sample
+            prev_dict = self._read_number.get()
+            new_dict = merge_defaultdicts(prev_dict, read_number)
+            self._read_number.put(new_dict)
+
+            # LOG reads assigned that pass length filter
+            prev_total = self._total_reads_assigned_pass_length_filter.get()
+            new_total = prev_total + assigned_reads_pass_length
+            self._total_reads_assigned_pass_length_filter.put(new_total)
+
             # LOG 5' no 3' reads
             prev_total = self._total_reads_5p_no_3p.get()
             new_total = prev_total + five_no_three_reads
             self._total_reads_5p_no_3p.put(new_total)
+
+            # LOG 5' no 3' reads that pass length filter
+            prev_total = self._total_reads_5p_no_3p_pass_length_filter.get()
+            new_total = prev_total + five_no_three_reads_pass_length
+            self._total_reads_5p_no_3p_pass_length_filter.put(new_total)
 
 
 def remove_mate_adapter(read, to_remove, bcd, trimmed):
@@ -956,8 +995,8 @@ def find_bc_and_umi_pos(barcodes):
 
 
 def start_workers(n_workers, input_file, need_work_queue, adapter,
-                  five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned,
-                  total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p,
+                  five_p_bcs, three_p_bcs, save_name, total_demultiplexed, total_reads_assigned, total_reads_assigned_pass_length_filter, read_number,
+                  total_reads_qtrimmed, total_reads_adaptor_trimmed, total_reads_5p_no_3p, total_reads_5p_no_3p_pass_length_filter,
                   min_score_5_p, three_p_mismatches, linked_bcds, three_p_trim_q,
                   ultra_mode, output_directory, final_min_length, q5, i2, adapter2, min_trim,
                   ignore_no_match, dont_build_reference, keep_barcode):
@@ -970,9 +1009,12 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
 
     total_demultiplexed.put([0, 0])  # [total written, last time it was printed] - initialise [0,0]
     total_reads_assigned.put(0)
+    total_reads_assigned_pass_length_filter.put(0)
     total_reads_qtrimmed.put(0)
     total_reads_adaptor_trimmed.put(0)
     total_reads_5p_no_3p.put(0)
+    total_reads_5p_no_3p_pass_length_filter.put(0)
+    read_number.put(defaultdict(int))
 
     for index in range(n_workers):
         # create a pipe to send data to this worker
@@ -990,9 +1032,12 @@ def start_workers(n_workers, input_file, need_work_queue, adapter,
                                save_name=save_name,
                                total_demultiplexed=total_demultiplexed,
                                total_reads_assigned=total_reads_assigned,
+                               total_reads_assigned_pass_length_filter=total_reads_assigned_pass_length_filter,
+                               read_number=read_number,
                                total_reads_qtrimmed=total_reads_qtrimmed,
                                total_reads_adaptor_trimmed=total_reads_adaptor_trimmed,
                                total_reads_5p_no_3p=total_reads_5p_no_3p,
+                               total_reads_5p_no_3p_pass_length_filter=total_reads_5p_no_3p_pass_length_filter,
                                ultra_mode=ultra_mode,
                                min_score_5_p=min_score_5_p,
                                three_p_mismatches=three_p_mismatches,
@@ -1414,9 +1459,12 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     need_work_queue = Queue()
     total_demultiplexed = Queue()
     total_reads_assigned = Queue()
+    total_reads_assigned_pass_length_filter = Queue()
     total_reads_qtrimmed = Queue()
     total_reads_adaptor_trimmed = Queue()
     total_reads_5p_no_3p = Queue()
+    total_reads_5p_no_3p_pass_length_filter = Queue()
+    read_number = Queue()
 
     # /# make a bunch of workers
     workers, all_conn_r, all_conn_w = start_workers(n_workers=threads,
@@ -1428,9 +1476,12 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
                                                     save_name=save_name,
                                                     total_demultiplexed=total_demultiplexed,
                                                     total_reads_assigned=total_reads_assigned,
+                                                    total_reads_assigned_pass_length_filter=total_reads_assigned_pass_length_filter,
+                                                    read_number=read_number,
                                                     total_reads_qtrimmed=total_reads_qtrimmed,
                                                     total_reads_adaptor_trimmed=total_reads_adaptor_trimmed,
                                                     total_reads_5p_no_3p=total_reads_5p_no_3p,
+                                                    total_reads_5p_no_3p_pass_length_filter=total_reads_5p_no_3p_pass_length_filter,
                                                     min_score_5_p=min_score_5_p,
                                                     three_p_mismatches=three_p_mismatches,
                                                     linked_bcds=linked_bcds,
@@ -1470,6 +1521,8 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     total_5p_no3_percent = (total_5p_no3 / total_processed_reads) * 100
     total_ass = total_reads_assigned.get()
     total_ass_percent = (total_ass / total_processed_reads) * 100
+    total_ass_passlength = total_reads_assigned_pass_length_filter.get()
+    total_ass_passlength_percent = (total_ass_passlength / total_processed_reads) * 100
     qmsg = str(total_qtrim) + " (" + str(round_sig(total_qtrim_percent, 3)) + "%) reads quality trimmed"
     logger.info(qmsg)
     amsg = str(total_adaptortrim) + " (" + str(round_sig(total_adaptortrim_percent, 3)) + "%) reads adaptor trimmed"
@@ -1477,9 +1530,23 @@ def main(buffer_size=int(4 * 1024 ** 2)):  # 4 MB
     fivemsg = str(total_5p_no3) + " (" + str(
         round_sig(total_5p_no3_percent, 3)) + "%) reads with correct 5' bc but 3' bc not found"
     logger.info(fivemsg)
+    total_reads_5p_no_3p_pass_length_filter_log = total_reads_5p_no_3p_pass_length_filter.get()
+    total_reads_5p_no_3p_pass_length_filter_percent = (total_reads_5p_no_3p_pass_length_filter_log/ total_processed_reads) * 100
+    fivepassmsg = str(total_reads_5p_no_3p_pass_length_filter_log) + " (" + str(
+        round_sig(total_reads_5p_no_3p_pass_length_filter_percent, 3)) + "%) reads with correct 5' bc but 3' bc not found that pass length filter"
+    logger.info(fivepassmsg)
     assmsg = str(total_ass) + " (" + str(
-        round_sig(total_ass_percent, 3)) + "%) reads correctly assigned to sample files"
+        round_sig(total_ass_percent, 3)) + "%) reads correctly assigned to samples"
     logger.info(assmsg)
+    asslengthmsg = str(total_ass_passlength) + " (" + str(
+        round_sig(total_ass_passlength_percent, 3)) + "%) reads written to sample files (pass length filter)"
+    logger.info(asslengthmsg)
+    logger.info("Total reads written per sample:")
+    reads_samps_Dict = read_number.get()
+    for k, v in reads_samps_Dict.items():
+        logger.info("{:<8} {:<15}".format(k, v))
+
+
 
 
 
