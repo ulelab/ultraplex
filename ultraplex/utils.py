@@ -2,7 +2,7 @@ import re
 import sys
 import time
 import errno
-import multiprocessing
+import multiprocess
 import logging
 
 from xopen import xopen
@@ -34,11 +34,11 @@ def available_cpu_count():
         if m:
             res = bin(int(m.group(1).replace(",", ""), 16)).count("1")
             if res > 0:
-                return min(res, multiprocessing.cpu_count())
+                return min(res, multiprocess.cpu_count())
     except OSError:
         pass
 
-    return multiprocessing.cpu_count()
+    return multiprocess.cpu_count()
 
 
 def raise_open_files_limit(n):
@@ -68,7 +68,10 @@ class Progress:
     @staticmethod
     def scissors(width=10):
         while True:
-            for is_reverse, rang in [(False, range(width + 1)), (True, range(width + 1))]:
+            for is_reverse, rang in [
+                (False, range(width + 1)),
+                (True, range(width + 1)),
+            ]:
                 for position in rang:
                     for is_open in (True, False):
                         left = " " * position
@@ -108,10 +111,16 @@ class Progress:
             "{animation} {hours:02d}:{minutes:02d}:{seconds:02d} "
             "{total:13,d} reads  @  {per_item:7.1F} µs/read; {per_minute:6.2F} M reads/minute"
             "".format(
-                hours=hours, minutes=minutes, seconds=seconds,
-                total=total, per_item=per_item * 1E6, per_minute=per_second * 60 / 1E6,
-                animation=next(self._animation)),
-            end="", file=sys.stderr
+                hours=hours,
+                minutes=minutes,
+                seconds=seconds,
+                total=total,
+                per_item=per_item * 1e6,
+                per_minute=per_second * 60 / 1e6,
+                animation=next(self._animation),
+            ),
+            end="",
+            file=sys.stderr,
         )
         self._n = total
         self._time = current_time
@@ -128,6 +137,7 @@ class DummyProgress:
     """
     Has the same interface as Progress, but does not print anything
     """
+
     def update(self, total, _final=False):
         pass
 
@@ -150,7 +160,9 @@ def reverse_complemented_sequence(sequence: dnaio.Sequence):
         qualities = None
     else:
         qualities = sequence.qualities[::-1]
-    return dnaio.Sequence(sequence.name, reverse_complement(sequence.sequence), qualities)
+    return dnaio.Sequence(
+        sequence.name, reverse_complement(sequence.sequence), qualities
+    )
 
 
 class FileOpener:
@@ -160,7 +172,9 @@ class FileOpener:
 
     def xopen(self, path, mode):
         logger.debug("Opening file '%s', mode '%s' with xopen", path, mode)
-        return xopen(path, mode, compresslevel=self.compression_level, threads=self.threads)
+        return xopen(
+            path, mode, compresslevel=self.compression_level, threads=self.threads
+        )
 
     def xopen_or_none(self, path, mode):
         """Return opened file or None if the path is None"""
@@ -170,14 +184,16 @@ class FileOpener:
 
     def xopen_pair(self, path1, path2, mode):
         if path1 is None and path2 is not None:
-            raise ValueError("When giving paths for paired-end files, only providing the second"
-                " file is not supported")
+            raise ValueError(
+                "When giving paths for paired-end files, only providing the second"
+                " file is not supported"
+            )
         file1 = self.xopen_or_none(path1, mode)
         file2 = self.xopen_or_none(path2, mode)
         return file1, file2
 
     def dnaio_open(self, *args, **kwargs):
-        logger.debug("Opening file '%s', mode '%s' with dnaio", args[0], kwargs['mode'])
+        logger.debug("Opening file '%s', mode '%s' with dnaio", args[0], kwargs["mode"])
         kwargs["opener"] = self.xopen
         return dnaio.open(*args, **kwargs)
 

@@ -19,6 +19,7 @@ class ModificationInfo:
     Any information (except the read itself) that needs to be passed from one modifier
     to one later in the pipeline or from one modifier to the filters is recorded here.
     """
+
     __slots__ = ["matches", "original_read"]
 
     def __init__(self, read):
@@ -42,9 +43,14 @@ class PairedModifierWrapper(PairedModifier):
     """
     Wrapper for modifiers that work on both reads in a paired-end read
     """
+
     paired = True
 
-    def __init__(self, modifier1: Optional[SingleEndModifier], modifier2: Optional[SingleEndModifier]):
+    def __init__(
+        self,
+        modifier1: Optional[SingleEndModifier],
+        modifier2: Optional[SingleEndModifier],
+    ):
         """Set one of the modifiers to None to work on R1 or R2 only"""
         self._modifier1 = modifier1
         self._modifier2 = modifier2
@@ -52,8 +58,9 @@ class PairedModifierWrapper(PairedModifier):
             raise ValueError("Not both modifiers may be None")
 
     def __repr__(self):
-        return 'PairedModifier(modifier1={!r}, modifier2={!r})'.format(
-            self._modifier1, self._modifier2)
+        return "PairedModifier(modifier1={!r}, modifier2={!r})".format(
+            self._modifier1, self._modifier2
+        )
 
     def __call__(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
         if self._modifier1 is None:
@@ -70,17 +77,19 @@ class AdapterCutter(SingleEndModifier):
     times parameter.
     """
 
-    def __init__(self, adapters, times=1, action='trim'):
+    def __init__(self, adapters, times=1, action="trim"):
         """
         adapters -- list of Adapter objects
 
         action -- What to do with a found adapter: None, 'trim', or 'mask'
         """
         self.times = times
-        assert action in ('trim', 'mask', 'lowercase', None)
+        assert action in ("trim", "mask", "lowercase", None)
         self.action = action
         self.with_adapters = 0
-        self.adapter_statistics = OrderedDict((a, a.create_statistics()) for a in adapters)
+        self.adapter_statistics = OrderedDict(
+            (a, a.create_statistics()) for a in adapters
+        )
         prefix, suffix, other = self._split_adapters(adapters)
         # For somewhat better backwards compatibility, avoid re-ordering
         # the adapters when we don’t need to
@@ -97,8 +106,9 @@ class AdapterCutter(SingleEndModifier):
         self.adapters = adapters
 
     def __repr__(self):
-        return 'AdapterCutter(adapters={!r}, times={}, action={!r})'.format(
-            self.adapters, self.times, self.action)
+        return "AdapterCutter(adapters={!r}, times={}, action={!r})".format(
+            self.adapters, self.times, self.action
+        )
 
     @staticmethod
     def _split_adapters(adapters):
@@ -134,8 +144,13 @@ class AdapterCutter(SingleEndModifier):
                 continue
 
             # the no. of matches determines which adapter fits best
-            if best_match is None or match.matches > best_match.matches or (
-                match.matches == best_match.matches and match.errors < best_match.errors
+            if (
+                best_match is None
+                or match.matches > best_match.matches
+                or (
+                    match.matches == best_match.matches
+                    and match.errors < best_match.errors
+                )
             ):
                 best_match = match
         return best_match
@@ -145,9 +160,8 @@ class AdapterCutter(SingleEndModifier):
         start, stop = remainder(matches)
         result = read[:]
         result.sequence = (
-            'N' * start
-            + read.sequence[start:stop]
-            + 'N' * (len(read) - stop))
+            "N" * start + read.sequence[start:stop] + "N" * (len(read) - stop)
+        )
         return result
 
     @staticmethod
@@ -183,7 +197,7 @@ class AdapterCutter(SingleEndModifier):
         Return a pair (trimmed_read, matches), where matches is a list of Match instances.
         """
         matches = []
-        if self.action == 'lowercase':
+        if self.action == "lowercase":
             read.sequence = read.sequence.upper()
         trimmed_read = read
         for _ in range(self.times):
@@ -197,12 +211,12 @@ class AdapterCutter(SingleEndModifier):
         if not matches:
             return trimmed_read, []
 
-        if self.action == 'trim':
+        if self.action == "trim":
             # read is already trimmed, nothing to do
             pass
-        elif self.action == 'mask':
+        elif self.action == "mask":
             trimmed_read = self.masked_read(read, matches)
-        elif self.action == 'lowercase':
+        elif self.action == "lowercase":
             trimmed_read = self.lowercased_read(read, matches)
             assert len(trimmed_read.sequence) == len(read)
         elif self.action is None:  # --no-trim
@@ -226,7 +240,9 @@ class ReverseComplementer(SingleEndModifier):
         reverse_read = reverse_complemented_sequence(read)
 
         forward_trimmed_read, forward_matches = self.adapter_cutter.match_and_trim(read)
-        reverse_trimmed_read, reverse_matches = self.adapter_cutter.match_and_trim(reverse_read)
+        reverse_trimmed_read, reverse_matches = self.adapter_cutter.match_and_trim(
+            reverse_read
+        )
 
         forward_match_count = sum(m.matches for m in forward_matches)
         reverse_match_count = sum(m.matches for m in reverse_matches)
@@ -260,7 +276,7 @@ class PairedAdapterCutter(PairedModifier):
     A Modifier that trims adapter pairs from R1 and R2.
     """
 
-    def __init__(self, adapters1, adapters2, action='trim'):
+    def __init__(self, adapters1, adapters2, action="trim"):
         """
         adapters1 -- list of Adapters to be removed from R1
         adapters2 -- list of Adapters to be removed from R1
@@ -274,7 +290,8 @@ class PairedAdapterCutter(PairedModifier):
         if len(adapters1) != len(adapters2):
             raise PairedAdapterCutterError(
                 "The number of reads to trim from R1 and R2 must be the same. "
-                "Given: {} for R1, {} for R2".format(len(adapters1), len(adapters2)))
+                "Given: {} for R1, {} for R2".format(len(adapters1), len(adapters2))
+            )
         if not adapters1:
             raise PairedAdapterCutterError("No adapters given")
         self._adapters1 = adapters1
@@ -283,16 +300,20 @@ class PairedAdapterCutter(PairedModifier):
         self.action = action
         self.with_adapters = 0
         self.adapter_statistics = [None, None]
-        self.adapter_statistics[0] = OrderedDict((a, a.create_statistics()) for a in adapters1)
-        self.adapter_statistics[1] = OrderedDict((a, a.create_statistics()) for a in adapters2)
+        self.adapter_statistics[0] = OrderedDict(
+            (a, a.create_statistics()) for a in adapters1
+        )
+        self.adapter_statistics[1] = OrderedDict(
+            (a, a.create_statistics()) for a in adapters2
+        )
 
     def __repr__(self):
-        return 'PairedAdapterCutter(adapters1={!r}, adapters2={!r})'.format(
-            self._adapters1, self._adapters2)
+        return "PairedAdapterCutter(adapters1={!r}, adapters2={!r})".format(
+            self._adapters1, self._adapters2
+        )
 
     def __call__(self, read1, read2, info1, info2):
-        """
-        """
+        """ """
         match1 = AdapterCutter.best_match(self._adapters1, read1)
         if match1 is None:
             return read1, read2
@@ -306,18 +327,18 @@ class PairedAdapterCutter(PairedModifier):
         result = []
         for i, match, read in zip([0, 1], [match1, match2], [read1, read2]):
             trimmed_read = read
-            if self.action == 'lowercase':
+            if self.action == "lowercase":
                 trimmed_read.sequence = trimmed_read.sequence.upper()
 
             trimmed_read = match.trimmed(trimmed_read)
             match.update_statistics(self.adapter_statistics[i][match.adapter])
 
-            if self.action == 'trim':
+            if self.action == "trim":
                 # read is already trimmed, nothing to do
                 pass
-            elif self.action == 'mask':
+            elif self.action == "mask":
                 trimmed_read = AdapterCutter.masked_read(read, [match])
-            elif self.action == 'lowercase':
+            elif self.action == "lowercase":
                 trimmed_read = AdapterCutter.lowercased_read(read, [match])
                 assert len(trimmed_read.sequence) == len(read)
             elif self.action is None:  # --no-trim
@@ -335,20 +356,22 @@ class UnconditionalCutter(SingleEndModifier):
     If the length is positive, the bases are removed from the beginning of the read.
     If the length is negative, the bases are removed from the end of the read.
     """
+
     def __init__(self, length: int):
         self.length = length
 
     def __call__(self, read, info: ModificationInfo):
         if self.length > 0:
-            return read[self.length:]
+            return read[self.length :]
         elif self.length < 0:
-            return read[:self.length]
+            return read[: self.length]
 
 
 class LengthTagModifier(SingleEndModifier):
     """
     Replace "length=..." strings in read names.
     """
+
     def __init__(self, length_tag):
         self.regex = re.compile(r"\b" + length_tag + r"[0-9]*\b")
         self.length_tag = length_tag
@@ -356,7 +379,9 @@ class LengthTagModifier(SingleEndModifier):
     def __call__(self, read, info: ModificationInfo):
         read = read[:]
         if read.name.find(self.length_tag) >= 0:
-            read.name = self.regex.sub(self.length_tag + str(len(read.sequence)), read.name)
+            read.name = self.regex.sub(
+                self.length_tag + str(len(read.sequence)), read.name
+            )
         return read
 
 
@@ -364,13 +389,14 @@ class SuffixRemover(SingleEndModifier):
     """
     Remove a given suffix from read names.
     """
+
     def __init__(self, suffix):
         self.suffix = suffix
 
     def __call__(self, read, info: ModificationInfo):
         read = read[:]
         if read.name.endswith(self.suffix):
-            read.name = read.name[:-len(self.suffix)]
+            read.name = read.name[: -len(self.suffix)]
         return read
 
 
@@ -378,15 +404,19 @@ class PrefixSuffixAdder(SingleEndModifier):
     """
     Add a suffix and a prefix to read names
     """
+
     def __init__(self, prefix, suffix):
         self.prefix = prefix
         self.suffix = suffix
 
     def __call__(self, read, info):
         read = read[:]
-        adapter_name = info.matches[-1].adapter.name if info.matches else 'no_adapter'
-        read.name = self.prefix.replace('{name}', adapter_name) + read.name + \
-            self.suffix.replace('{name}', adapter_name)
+        adapter_name = info.matches[-1].adapter.name if info.matches else "no_adapter"
+        read.name = (
+            self.prefix.replace("{name}", adapter_name)
+            + read.name
+            + self.suffix.replace("{name}", adapter_name)
+        )
         return read
 
 
@@ -394,9 +424,10 @@ class ZeroCapper(SingleEndModifier):
     """
     Change negative quality values of a read to zero
     """
+
     def __init__(self, quality_base=33):
         qb = quality_base
-        self.zero_cap_trans = str.maketrans(''.join(map(chr, range(qb))), chr(qb) * qb)
+        self.zero_cap_trans = str.maketrans("".join(map(chr, range(qb))), chr(qb) * qb)
 
     def __call__(self, read, info: ModificationInfo):
         read = read[:]
@@ -424,7 +455,9 @@ class QualityTrimmer(SingleEndModifier):
         self.trimmed_bases = 0
 
     def __call__(self, read, info: ModificationInfo):
-        start, stop = quality_trim_index(read.qualities, self.cutoff_front, self.cutoff_back, self.base)
+        start, stop = quality_trim_index(
+            read.qualities, self.cutoff_front, self.cutoff_back, self.base
+        )
         self.trimmed_bases += len(read) - (stop - start)
         return read[start:stop]
 
@@ -435,21 +468,23 @@ class Shortener(SingleEndModifier):
     If the length is positive, the bases are removed from the end of the read.
     If the length is negative, the bases are removed from the beginning of the read.
     """
+
     def __init__(self, length):
         self.length = length
 
     def __call__(self, read, info: ModificationInfo):
         if self.length >= 0:
-            return read[:self.length]
+            return read[: self.length]
         else:
-            return read[self.length:]
+            return read[self.length :]
 
 
 class NEndTrimmer(SingleEndModifier):
     """Trims Ns from the 3' and 5' end of reads"""
+
     def __init__(self):
-        self.start_trim = re.compile(r'^N+')
-        self.end_trim = re.compile(r'N+$')
+        self.start_trim = re.compile(r"^N+")
+        self.end_trim = re.compile(r"N+$")
 
     def __call__(self, read, info: ModificationInfo):
         sequence = read.sequence

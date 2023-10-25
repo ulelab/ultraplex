@@ -89,6 +89,7 @@ class NoFilter(SingleEndFilterWithStatistics):
     """
     No filtering, just send each read to the given writer.
     """
+
     def __init__(self, writer):
         super().__init__()
         self.writer = writer
@@ -103,6 +104,7 @@ class PairedNoFilter(PairedEndFilterWithStatistics):
     """
     No filtering, just send each paired-end read to the given writer.
     """
+
     def __init__(self, writer):
         super().__init__()
         self.writer = writer
@@ -117,6 +119,7 @@ class Redirector(SingleEndFilterWithStatistics):
     """
     Redirect discarded reads to the given writer. This is for single-end reads.
     """
+
     def __init__(self, writer, filter: SingleEndFilter, filter2=None):
         super().__init__()
         # TODO filter2 should really not be here
@@ -140,7 +143,8 @@ class PairedRedirector(PairedEndFilterWithStatistics):
     Different filtering styles are supported, differing by which of the
     two reads in a pair have to fulfill the filtering criterion.
     """
-    def __init__(self, writer, filter, filter2, pair_filter_mode='any'):
+
+    def __init__(self, writer, filter, filter2, pair_filter_mode="any"):
         """
         pair_filter_mode -- these values are allowed:
             'any': The pair is discarded if any read matches.
@@ -148,7 +152,7 @@ class PairedRedirector(PairedEndFilterWithStatistics):
             'first': The pair is discarded if the first read matches.
         """
         super().__init__()
-        if pair_filter_mode not in ('any', 'both', 'first'):
+        if pair_filter_mode not in ("any", "both", "first"):
             raise ValueError("pair_filter_mode must be 'any', 'both' or 'first'")
         self.filtered = 0
         self.writer = writer
@@ -158,23 +162,31 @@ class PairedRedirector(PairedEndFilterWithStatistics):
             self._is_filtered = self._is_filtered_first
         elif filter is None:
             self._is_filtered = self._is_filtered_second
-        elif pair_filter_mode == 'any':
+        elif pair_filter_mode == "any":
             self._is_filtered = self._is_filtered_any
-        elif pair_filter_mode == 'both':
+        elif pair_filter_mode == "both":
             self._is_filtered = self._is_filtered_both
         else:
             self._is_filtered = self._is_filtered_first
 
-    def _is_filtered_any(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
+    def _is_filtered_any(
+        self, read1, read2, info1: ModificationInfo, info2: ModificationInfo
+    ):
         return self.filter(read1, info1) or self.filter2(read2, info2)
 
-    def _is_filtered_both(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
+    def _is_filtered_both(
+        self, read1, read2, info1: ModificationInfo, info2: ModificationInfo
+    ):
         return self.filter(read1, info1) and self.filter2(read2, info2)
 
-    def _is_filtered_first(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
+    def _is_filtered_first(
+        self, read1, read2, info1: ModificationInfo, info2: ModificationInfo
+    ):
         return self.filter(read1, info1)
 
-    def _is_filtered_second(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
+    def _is_filtered_second(
+        self, read1, read2, info1: ModificationInfo, info2: ModificationInfo
+    ):
         return self.filter2(read2, info2)
 
     def __call__(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
@@ -211,6 +223,7 @@ class MaximumExpectedErrorsFilter(SingleEndFilter):
     The idea comes from usearch's -fastq_maxee parameter
     (http://drive5.com/usearch/).
     """
+
     def __init__(self, max_errors):
         self.max_errors = max_errors
 
@@ -225,6 +238,7 @@ class NContentFilter(SingleEndFilter):
     of Ns as well as proportions. Note, for raw counts, it is a 'greater than' comparison,
     so a cutoff of '1' will keep reads with a single N in it.
     """
+
     def __init__(self, count):
         """
         Count -- if it is below 1.0, it will be considered a proportion, and above and equal to
@@ -236,7 +250,7 @@ class NContentFilter(SingleEndFilter):
 
     def __call__(self, read, info: ModificationInfo):
         """Return True when the read should be discarded"""
-        n_count = read.sequence.lower().count('n')
+        n_count = read.sequence.lower().count("n")
         if self.is_proportion:
             if len(read) == 0:
                 return False
@@ -249,6 +263,7 @@ class DiscardUntrimmedFilter(SingleEndFilter):
     """
     Return True if read is untrimmed.
     """
+
     def __call__(self, read, info: ModificationInfo):
         return not info.matches
 
@@ -257,6 +272,7 @@ class DiscardTrimmedFilter(SingleEndFilter):
     """
     Return True if read is trimmed.
     """
+
     def __call__(self, read, info: ModificationInfo):
         return bool(info.matches)
 
@@ -269,9 +285,10 @@ class CasavaFilter(SingleEndFilter):
 
     Reads with unrecognized headers are kept.
     """
+
     def __call__(self, read, info: ModificationInfo):
-        _, _, right = read.name.partition(' ')
-        return right[1:4] == ':Y:'  # discard if :Y: found
+        _, _, right = read.name.partition(" ")
+        return right[1:4] == ":Y:"  # discard if :Y: found
 
 
 class Demultiplexer(SingleEndFilterWithStatistics):
@@ -280,6 +297,7 @@ class Demultiplexer(SingleEndFilterWithStatistics):
     depending on which adapter matches. Files are created when the first read
     is written to them.
     """
+
     def __init__(self, path_template, untrimmed_path, qualities, file_opener):
         """
         path_template must contain the string '{name}', which will be replaced
@@ -288,7 +306,7 @@ class Demultiplexer(SingleEndFilterWithStatistics):
         untrimmed_path.
         """
         super().__init__()
-        assert '{name}' in path_template
+        assert "{name}" in path_template
         self.template = path_template
         self.untrimmed_path = untrimmed_path
         self.untrimmed_writer = None
@@ -304,13 +322,15 @@ class Demultiplexer(SingleEndFilterWithStatistics):
             name = info.matches[-1].adapter.name
             if name not in self.writers:
                 self.writers[name] = self.file_opener.dnaio_open_raise_limit(
-                    self.template.replace('{name}', name), self.qualities)
+                    self.template.replace("{name}", name), self.qualities
+                )
             self.update_statistics(read)
             self.writers[name].write(read)
         else:
             if self.untrimmed_writer is None and self.untrimmed_path is not None:
                 self.untrimmed_writer = self.file_opener.dnaio_open_raise_limit(
-                    self.untrimmed_path, self.qualities)
+                    self.untrimmed_path, self.qualities
+                )
             if self.untrimmed_writer is not None:
                 self.update_statistics(read)
                 self.untrimmed_writer.write(read)
@@ -328,8 +348,16 @@ class PairedDemultiplexer(PairedEndFilterWithStatistics):
     Demultiplex trimmed paired-end reads. Reads are written to different output files
     depending on which adapter (in read 1) matches.
     """
-    def __init__(self, path_template, path_paired_template, untrimmed_path, untrimmed_paired_path,
-            qualities, file_opener):
+
+    def __init__(
+        self,
+        path_template,
+        path_paired_template,
+        untrimmed_path,
+        untrimmed_paired_path,
+        qualities,
+        file_opener,
+    ):
         """
         The path templates must contain the string '{name}', which will be replaced
         with the name of the adapter to form the final output path.
@@ -337,15 +365,21 @@ class PairedDemultiplexer(PairedEndFilterWithStatistics):
         untrimmed_path.
         """
         super().__init__()
-        self._demultiplexer1 = Demultiplexer(path_template, untrimmed_path, qualities, file_opener)
-        self._demultiplexer2 = Demultiplexer(path_paired_template, untrimmed_paired_path,
-            qualities, file_opener)
+        self._demultiplexer1 = Demultiplexer(
+            path_template, untrimmed_path, qualities, file_opener
+        )
+        self._demultiplexer2 = Demultiplexer(
+            path_paired_template, untrimmed_paired_path, qualities, file_opener
+        )
 
     def written(self) -> int:
         return self._demultiplexer1.written_reads()
 
     def written_bp(self) -> Tuple[int, int]:
-        return (self._demultiplexer1.written_bp()[0], self._demultiplexer2.written_bp()[0])
+        return (
+            self._demultiplexer1.written_bp()[0],
+            self._demultiplexer2.written_bp()[0],
+        )
 
     def __call__(self, read1, read2, info1: ModificationInfo, info2: ModificationInfo):
         assert read2 is not None
@@ -362,6 +396,7 @@ class CombinatorialDemultiplexer(PairedEndFilterWithStatistics):
     Demultiplex reads depending on which adapter matches, taking into account both matches
     on R1 and R2.
     """
+
     def __init__(
         self,
         path_template: str,
@@ -382,8 +417,8 @@ class CombinatorialDemultiplexer(PairedEndFilterWithStatistics):
             do not contain an adapter (use "unknown"). Set to None to discard these read pairs.
         """
         super().__init__()
-        assert '{name1}' in path_template and '{name2}' in path_template
-        assert '{name1}' in path_paired_template and '{name2}' in path_paired_template
+        assert "{name1}" in path_template and "{name2}" in path_template
+        assert "{name1}" in path_paired_template and "{name2}" in path_paired_template
         self.template = path_template
         self.paired_template = path_paired_template
         self.untrimmed_name = untrimmed_name
@@ -393,7 +428,7 @@ class CombinatorialDemultiplexer(PairedEndFilterWithStatistics):
 
     @staticmethod
     def _make_path(template, name1, name2):
-        return template.replace('{name1}', name1).replace('{name2}', name2)
+        return template.replace("{name1}", name1).replace("{name2}", name2)
 
     def __call__(self, read1, read2, info1, info2):
         """
@@ -415,8 +450,12 @@ class CombinatorialDemultiplexer(PairedEndFilterWithStatistics):
             path1 = self._make_path(self.template, name1, name2)
             path2 = self._make_path(self.paired_template, name1, name2)
             self.writers[key] = (
-                self.file_opener.dnaio_open_raise_limit(path1, qualities=self.qualities),
-                self.file_opener.dnaio_open_raise_limit(path2, qualities=self.qualities),
+                self.file_opener.dnaio_open_raise_limit(
+                    path1, qualities=self.qualities
+                ),
+                self.file_opener.dnaio_open_raise_limit(
+                    path2, qualities=self.qualities
+                ),
             )
         writer1, writer2 = self.writers[key]
         self.update_statistics(read1, read2)
@@ -464,11 +503,16 @@ class InfoFileWriter(SingleEndFilter):
             for match in info.matches:
                 for info_record in match.get_info_records(current_read):
                     # info_record[0] is the read name suffix
-                    print(read.name + info_record[0], *info_record[1:], sep='\t', file=self.file)
+                    print(
+                        read.name + info_record[0],
+                        *info_record[1:],
+                        sep="\t",
+                        file=self.file
+                    )
                 current_read = match.trimmed(current_read)
         else:
             seq = read.sequence
-            qualities = read.qualities if read.qualities is not None else ''
-            print(read.name, -1, seq, qualities, sep='\t', file=self.file)
+            qualities = read.qualities if read.qualities is not None else ""
+            print(read.name, -1, seq, qualities, sep="\t", file=self.file)
 
         return KEEP
