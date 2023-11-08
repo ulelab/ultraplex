@@ -445,7 +445,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         final_min_length,
         dont_build_reference,
         keep_barcode,
-        three_prime_only
+        three_prime_only,
+        TSO_umi_pos,
+        TSO_end
     ):
         super().__init__()
         self._id = index  # the worker id
@@ -493,6 +495,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         }
         self._keep_barcode = keep_barcode
         self._three_prime_only = three_prime_only
+        self._TSO_umi_pos = TSO_umi_pos
+        self._TSO_end = TSO_end
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -792,6 +796,18 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                         if self._three_prime_only:
                             comb_bc = "_3bc_" + careful_rev_c(five_p_bc)
+
+                            # Need to remove TSO seq and move UMI to header
+                            # Have to use 'read2' because this is actually read 1, it's just we've flipped it
+
+                            TSO_umi = read2.sequence[0:self._TSO_umi_pos]
+                            read2 = read2[self._TSO_end:]
+
+                            for read in [read1, read2]:
+                                if not "rbc:" in read.name:
+                                    read.name = read.name + "rbc:" + TSO_umi
+                                else:  # if rbc is already there
+                                    read.name = read.name + TSO_umi
                         else:
                             comb_bc = "_5bc_" + five_p_bc
 
@@ -1200,7 +1216,9 @@ def start_workers(
     ignore_no_match,
     dont_build_reference,
     keep_barcode,
-    three_prime_only
+    three_prime_only,
+    TSO_umi_pos,
+    TSO_end
 ):
     """
     This function starts all the workers
@@ -1256,7 +1274,9 @@ def start_workers(
             final_min_length=final_min_length,
             dont_build_reference=dont_build_reference,
             keep_barcode=keep_barcode,
-            three_prime_only=three_prime_only
+            three_prime_only=three_prime_only,
+            TSO_umi_pos=TSO_umi_pos,
+            TSO_end=TSO_end
         )
 
         worker.start()
@@ -1365,8 +1385,6 @@ def concatenate_files(
                             sample_name_list.append(key)
                     else:  # if 3' bc is not in the type, the by definition if won't be in the key
                         sample_name_list.append(key)
-
-            print(sample_name_list)
 
             if len(sample_name_list) == 1:  # check that only one name matches
                 if "Fwd" in this_type:
@@ -1675,6 +1693,10 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
                           action='store_true',
                           default=False,
                           help='Use this if only using 3 prime barcodes')
+    optional.add_argument('--tso_seq',
+                          default="",
+                          help="Specify this if the read 1 has a TSO. Should be of format NNNNIII or NNNNII where the N "
+                               "bases are moved to the UMI and the I bases are ignored")
     # minimum quality score
     optional.add_argument(
         "-q",
@@ -1849,6 +1871,19 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
     dont_build_reference = args.dont_build_reference
     keep_barcode = args.keep_barcode
 
+    if args.tso_seq != "":
+        if args.three_prime_only == False:
+            assert 0 == 1, 'Can only specify TSO seq when using three prime only!'
+        else:
+
+            args.tso_seq = args.tso_seq.replace(" ", "")
+
+            TSO_end = len(args.tso_seq)
+            TSO_umi_pos = max([i for i, l in enumerate(args.tso_seq) if l == "N"]) + 1  # this is the last position
+    else:
+        TSO_end = 0
+        TSO_umi_pos = 0
+
     if i2 == "":
         i2 = False
 
@@ -1944,7 +1979,9 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         final_min_length=final_min_length,
         dont_build_reference=dont_build_reference,
         keep_barcode=keep_barcode,
-        three_prime_only=args.three_prime_only
+        three_prime_only=args.three_prime_only,
+        TSO_umi_pos=TSO_umi_pos,
+        TSO_end=TSO_end
     )
 
     print("Demultiplexing...")
