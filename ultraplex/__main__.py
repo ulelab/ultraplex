@@ -248,6 +248,13 @@ def make_all_seqs(l):
     return all_seqs
 
 
+def careful_rev_c(seq):
+    if "no_match".upper() in seq.upper():
+        return seq
+    else:
+        return rev_c(seq)
+
+
 def rev_c(seq):
     """
     simple function that reverse complements a given sequence
@@ -561,7 +568,6 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 for read in InputFiles(infiles).open():
                     reads_written += 1
                     umi = ""
-
                     (
                         read,
                         trimmed,
@@ -574,7 +580,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                     # /# demultiplex at the 5' end ###
                     read.name = (
-                        read.name.replace(" ", "").replace("/", "").replace("\\", "")
+                        read.name.replace(" ", "_").replace("/", "").replace("\\", "")
                     )  # remove bad characters
 
                     read, five_p_bc, umi, to_remove = five_p_demulti(
@@ -747,10 +753,10 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                     # /# demultiplex at the 5' end ###
                     read1.name = (
-                        read1.name.replace(" ", "").replace("/", "").replace("\\", "")
+                        read1.name.replace(" ", "_").replace("/", "").replace("\\", "")
                     )  # remove bad characters
                     read2.name = (
-                        read2.name.replace(" ", "").replace("/", "").replace("\\", "")
+                        read2.name.replace(" ", "_").replace("/", "").replace("\\", "")
                     )  # remove bad characters
 
                     # demultiplex based on 5' end
@@ -785,7 +791,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         # barcodes
 
                         if self._three_prime_only:
-                            comb_bc = "_3bc_" + rev_c(five_p_bc)
+                            comb_bc = "_3bc_" + careful_rev_c(five_p_bc)
                         else:
                             comb_bc = "_5bc_" + five_p_bc
 
@@ -1134,7 +1140,7 @@ def five_p_demulti(
 
             if add_umi:
                 # to read header add umi and 5' barcode info
-                read.name = read.name.replace(" ", "") + to_add + this_five_p_umi
+                read.name = read.name.replace(" ", "_") + to_add + this_five_p_umi
         else:  # if no match
             read.name = read.name + to_add
 
@@ -1194,6 +1200,7 @@ def start_workers(
     ignore_no_match,
     dont_build_reference,
     keep_barcode,
+    three_prime_only
 ):
     """
     This function starts all the workers
@@ -1249,7 +1256,7 @@ def start_workers(
             final_min_length=final_min_length,
             dont_build_reference=dont_build_reference,
             keep_barcode=keep_barcode,
-            three_prime_only=args.three_prime_only
+            three_prime_only=three_prime_only
         )
 
         worker.start()
@@ -1353,11 +1360,13 @@ def concatenate_files(
             for key, value in sample_names.items():
                 if key in this_type and "no_match" not in this_type:
                     # check that if key doesn't contain 3' barcode, then the type does either
-                    if "_3bc_" in this_type:
-                        if "_3bc_" in key:
+                    if "3bc_" in this_type:
+                        if "3bc_" in key:
                             sample_name_list.append(key)
                     else:  # if 3' bc is not in the type, the by definition if won't be in the key
                         sample_name_list.append(key)
+
+            print(sample_name_list)
 
             if len(sample_name_list) == 1:  # check that only one name matches
                 if "Fwd" in this_type:
@@ -1408,7 +1417,7 @@ def clean_files(output_directory, save_name):
         os.remove(file)
 
 
-def process_bcs(csv, mismatch_5p):
+def process_bcs(csv, mismatch_5p, three_prime_only):
     five_p_bcs = []
     three_p_bcs = []
     linked = {}
@@ -1862,7 +1871,7 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
 
     # process the barcodes csv
     five_p_bcs, three_p_bcs, linked_bcds, min_score_5_p, sample_names = process_bcs(
-        barcodes_csv, mismatch_5p
+        barcodes_csv, mismatch_5p, args.three_prime_only
     )
 
     # remove files from previous runs
@@ -1870,7 +1879,7 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
 
     # Switch things up if 3 prime only
     if args.three_prime_only:
-        assert args.i2 is not False, 'In --three_prime_only mode you must have paired end sequencing!'
+        assert args.input_2 is not False, 'In --three_prime_only mode you must have paired end sequencing!'
         assert len(three_p_bcs) == 0, 'You appear to have given both 3 and 5 prime barcodes but are using --three_prime_only mode...?'
 
         # Pretend that read1 is read2 and vice versa. This enables read2 to be passed to the 5' demultiplexing
@@ -1880,7 +1889,7 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         # Also need to reverse complement the barcodes that are given. This is because the 3' barcodes are given
         # as they are in read1. However, demultiplexing will use read2, which means it will be the reverse
         # complement
-        five_p_bcs = [rev_c(a) for a in five_p_bcs]
+        five_p_bcs = [careful_rev_c(a) for a in five_p_bcs]
 
         # Also need to switch the adapters
         adapter2 = args.adapter
@@ -1935,6 +1944,7 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         final_min_length=final_min_length,
         dont_build_reference=dont_build_reference,
         keep_barcode=keep_barcode,
+        three_prime_only=args.three_prime_only
     )
 
     print("Demultiplexing...")
