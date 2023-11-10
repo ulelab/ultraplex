@@ -44,7 +44,7 @@ setup(
     # package_dir={'': 'ultraplex'},
     # packages=find_packages(''),
     packages=find_packages(),
-    install_requires=["dnaio>=0.5.0", "xopen~=1.0.0", "multiprocess~=0.70.15"],
+    install_requires=["dnaio>=0.5.0", "xopen~=1.0.0", "multiprocess~=0.70.15", "setuptools_scm","cython>0.29.22"],
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
