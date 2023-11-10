@@ -175,3 +175,11 @@ This option keeps barcodes and UMIs in the read after demultiplexing - note that
 
 ### Ignore no match (-inm, --ignore_no_match)
 This option does not write out reads for which there was no barcode match, which may save time.
+
+### 3 prime only (--three_prime_only)
+
+This is when you only have 3' barcodes. In this case, write each barcode on a new line in the barcode csv. Feel free to add names too like with 5' barcodes. The format of the barcode CSV should be exactly the same as if you only had 5' barcodes (see above). Barcode sequences should be as they would be in read 1 (just as above for 3' barcodes). Ultraplex uses the read 2 for demultiplexing here, and handles all reverse complementing internally.
+
+### TSO seq (--tso_seq)
+
+This is used solely in conjunction with the option --three_prime_barcode. It is solely for TSOs that have a p5 sequence (i.e. give rise to the read 1). Give a sequence of Ns followed by Is. Ns are moved to the UMI. Is are trimmed from the read but not moved to the UMI. For example, if using a TSO of sequence (p5)NNNNNrGrGrG, you would specify --tso_seq NNNNNIII. This would move the five random bases to the UMI, but the three non-random bases from the rGs would be trimmed and ignored.

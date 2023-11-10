@@ -4,3 +4,4 @@ dist/*
 ultraplex.egg*
 *fastq.gz
 ultraplex/_pycache_/*
+.DS_Store

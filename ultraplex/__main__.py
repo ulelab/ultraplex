@@ -248,6 +248,13 @@ def make_all_seqs(l):
     return all_seqs
 
 
+def careful_rev_c(seq):
+    if "no_match".upper() in seq.upper():
+        return seq
+    else:
+        return rev_c(seq)
+
+
 def rev_c(seq):
     """
     simple function that reverse complements a given sequence
@@ -438,6 +445,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
         final_min_length,
         dont_build_reference,
         keep_barcode,
+        three_prime_only,
+        TSO_umi_pos,
+        TSO_end
     ):
         super().__init__()
         self._id = index  # the worker id
@@ -484,6 +494,9 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
             key: remove_Ns_from_barcodes(value) for (key, value) in linked_bcds.items()
         }
         self._keep_barcode = keep_barcode
+        self._three_prime_only = three_prime_only
+        self._TSO_umi_pos = TSO_umi_pos
+        self._TSO_end = TSO_end
 
     def trim_and_cut(self, read, cutter, reads_quality_trimmed, reads_adaptor_trimmed):
         # /# first, trim by quality score
@@ -559,7 +572,6 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 for read in InputFiles(infiles).open():
                     reads_written += 1
                     umi = ""
-
                     (
                         read,
                         trimmed,
@@ -572,7 +584,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                     # /# demultiplex at the 5' end ###
                     read.name = (
-                        read.name.replace(" ", "").replace("/", "").replace("\\", "")
+                        read.name.replace(" ", "_").replace("/", "").replace("\\", "")
                     )  # remove bad characters
 
                     read, five_p_bc, umi, to_remove = five_p_demulti(
@@ -586,7 +598,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         keep_barcode=self._keep_barcode,
                     )
 
-                    # /# demultiplex at the 3' end
+                    # demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
                     try:
                         linked = self._linked_bcds[five_p_bc]
@@ -745,10 +757,10 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                     # /# demultiplex at the 5' end ###
                     read1.name = (
-                        read1.name.replace(" ", "").replace("/", "").replace("\\", "")
+                        read1.name.replace(" ", "_").replace("/", "").replace("\\", "")
                     )  # remove bad characters
                     read2.name = (
-                        read2.name.replace(" ", "").replace("/", "").replace("\\", "")
+                        read2.name.replace(" ", "_").replace("/", "").replace("\\", "")
                     )  # remove bad characters
 
                     # demultiplex based on 5' end
@@ -770,7 +782,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                         else:  # if rbc is already there
                             read.name = read.name + umi
 
-                    # /# demultiplex at the 3' end
+                    # demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
                     try:
                         linked = self._linked_bcds[five_p_bc]
@@ -780,8 +792,24 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     if (
                         linked == "_none_"
                     ):  # no 3' barcodes linked to this 5' barcode, this includes "no_match" 5'
-                        # barcdoes
-                        comb_bc = "_5bc_" + five_p_bc
+                        # barcodes
+
+                        if self._three_prime_only:
+                            comb_bc = "_3bc_" + careful_rev_c(five_p_bc)
+
+                            # Need to remove TSO seq and move UMI to header
+                            # Have to use 'read2' because this is actually read 1, it's just we've flipped it
+
+                            TSO_umi = read2.sequence[0:self._TSO_umi_pos]
+                            read2 = read2[self._TSO_end:]
+
+                            for read in [read1, read2]:
+                                if not "rbc:" in read.name:
+                                    read.name = read.name + "rbc:" + TSO_umi
+                                else:  # if rbc is already there
+                                    read.name = read.name + TSO_umi
+                        else:
+                            comb_bc = "_5bc_" + five_p_bc
 
                         # remove the 5' barcoded adapter from reverse read
                         read2 = remove_mate_adapter(
@@ -879,7 +907,14 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                 ## Write out! ##
                 read_number = defaultdict(int)
                 for demulti_type, reads in this_buffer_dict_1.items():
-                    demulti_type = demulti_type + "_Fwd"
+
+                    # If three_prime_only then we have to label the reads flipped, because the input read files
+                    # were also flipped
+                    if self._three_prime_only:
+                        demulti_type = demulti_type + "_Rev"
+                    else:
+                        demulti_type = demulti_type + "_Fwd"
+
                     read_number[demulti_type] = write_tmp_files(
                         output_dir=self._output_directory,
                         save_name=self._save_name,
@@ -891,7 +926,14 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     )
 
                 for demulti_type, reads in this_buffer_dict_2.items():
-                    demulti_type = demulti_type + "_Rev"
+
+                    # If three_prime_only then we have to label the reads flipped, because the input read files
+                    # were also flipped
+                    if self._three_prime_only:
+                        demulti_type = demulti_type + "_Fwd"
+                    else:
+                        demulti_type = demulti_type + "_Rev"
+
                     read_number[demulti_type] = write_tmp_files(
                         output_dir=self._output_directory,
                         save_name=self._save_name,
@@ -1114,7 +1156,7 @@ def five_p_demulti(
 
             if add_umi:
                 # to read header add umi and 5' barcode info
-                read.name = read.name.replace(" ", "") + to_add + this_five_p_umi
+                read.name = read.name.replace(" ", "_") + to_add + this_five_p_umi
         else:  # if no match
             read.name = read.name + to_add
 
@@ -1174,6 +1216,9 @@ def start_workers(
     ignore_no_match,
     dont_build_reference,
     keep_barcode,
+    three_prime_only,
+    TSO_umi_pos,
+    TSO_end
 ):
     """
     This function starts all the workers
@@ -1229,6 +1274,9 @@ def start_workers(
             final_min_length=final_min_length,
             dont_build_reference=dont_build_reference,
             keep_barcode=keep_barcode,
+            three_prime_only=three_prime_only,
+            TSO_umi_pos=TSO_umi_pos,
+            TSO_end=TSO_end
         )
 
         worker.start()
@@ -1332,8 +1380,8 @@ def concatenate_files(
             for key, value in sample_names.items():
                 if key in this_type and "no_match" not in this_type:
                     # check that if key doesn't contain 3' barcode, then the type does either
-                    if "_3bc_" in this_type:
-                        if "_3bc_" in key:
+                    if "3bc_" in this_type:
+                        if "3bc_" in key:
                             sample_name_list.append(key)
                     else:  # if 3' bc is not in the type, the by definition if won't be in the key
                         sample_name_list.append(key)
@@ -1387,7 +1435,7 @@ def clean_files(output_directory, save_name):
         os.remove(file)
 
 
-def process_bcs(csv, mismatch_5p):
+def process_bcs(csv, mismatch_5p, three_prime_only):
     five_p_bcs = []
     three_p_bcs = []
     linked = {}
@@ -1399,7 +1447,7 @@ def process_bcs(csv, mismatch_5p):
         for row in file:
             counter_3 = 0  # 3' barcodes only have to be consistent for each 5' barcode
             counter_5 += 1
-            # First, find if theres a comma
+            # First, find if there's a comma
             line = row.rstrip().replace(" ", "")
             comma_split = line.split(",")
 
@@ -1414,14 +1462,19 @@ def process_bcs(csv, mismatch_5p):
                 just_5p = False
 
             if just_5p:
-                # then there's no 3' barcode
+                # then there's no 3' barcode (or we only have 3' barcodes but we're pretending they are 5' barcodes)
                 five_p_bcs.append(comma_split[0].split(":")[0].upper())
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
+
+                if three_prime_only:
+                    name_prefix = '3bc_'
+                else:
+                    name_prefix = '5bc_'
 
                 if len(comma_split[0].split(":")) > 1:
                     if comma_split[0].split(":")[1] != "":
                         sample_names[
-                            "5bc_" + comma_split[0].split(":")[0].upper()
+                            name_prefix + comma_split[0].split(":")[0].upper()
                         ] = comma_split[0].split(":")[1]
 
                 if counter_5 == 1:
@@ -1440,7 +1493,7 @@ def process_bcs(csv, mismatch_5p):
                         == fivelength
                     ), "5' barcodes not consistent"
             else:
-                # then we have 3 prime bcds
+                # then we have 3 prime bcds as well
                 five_p_bcs.append(comma_split[0].split(":")[0].upper())
                 assert comma_split[0].count(":") <= 1, "multiple colons in 5' barcode"
                 if comma_split[0].count(":") == 1:
@@ -1622,9 +1675,9 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         "-m5",
         "--fiveprimemismatches",
         type=int,
-        default=1,
+        default=0,
         nargs="?",
-        help="number of mismatches allowed for 5prime barcode [DEFAULT 1]",
+        help="number of mismatches allowed for 5prime barcode [DEFAULT 0]",
     )
     # 3' mismatches
     optional.add_argument(
@@ -1635,6 +1688,15 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         nargs="?",
         help="number of mismatches allowed for 3prime barcode [DEFAULT 0]",
     )
+    # 3 prime barcodes only
+    optional.add_argument('--three_prime_only',
+                          action='store_true',
+                          default=False,
+                          help='Use this if only using 3 prime barcodes')
+    optional.add_argument('--tso_seq',
+                          default="",
+                          help="Specify this if the read 1 has a TSO. Should be of format NNNNIII or NNNNII where the N "
+                               "bases are moved to the UMI and the I bases are ignored")
     # minimum quality score
     optional.add_argument(
         "-q",
@@ -1653,9 +1715,10 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         "-a",
         "--adapter",
         type=str,
-        default="AGATCGGAAGAGCGGTTCAG",
+        default="AGATCGGAAGAGCACACGTCTGAA",
         nargs="?",
-        help="sequencing adapter to trim [DEFAULT Illumina AGATCGGAAGAGCGGTTCAG]",
+        help="sequencing adapter to trim [DEFAULT Illumina AGATCGGAAGAGCACACGTCTGAA p7]. Specify 'p3' or "
+             "AGATCGGAAGAGCGGTTCAG to trim legacy p3 sequence",
     )
     # name of output file
     optional.add_argument(
@@ -1763,6 +1826,10 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
     parser._action_groups.append(optional)
     args = parser.parse_args()
 
+    if args.adapter == "p3" or args.adapter == "P3":
+        print("p3 adapter specified, therefore setting adapter for read 1 to AGATCGGAAGAGCGGTTCAG")
+        args.adapter = 'AGATCGGAAGAGCGGTTCAG'
+
     output_directory = args.directory
 
     if not output_directory == "":
@@ -1804,6 +1871,19 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
     dont_build_reference = args.dont_build_reference
     keep_barcode = args.keep_barcode
 
+    if args.tso_seq != "":
+        if args.three_prime_only == False:
+            assert 0 == 1, 'Can only specify TSO seq when using three prime only!'
+        else:
+
+            args.tso_seq = args.tso_seq.replace(" ", "")
+
+            TSO_end = len(args.tso_seq)
+            TSO_umi_pos = max([i for i, l in enumerate(args.tso_seq) if l == "N"]) + 1  # this is the last position
+    else:
+        TSO_end = 0
+        TSO_umi_pos = 0
+
     if i2 == "":
         i2 = False
 
@@ -1826,18 +1906,38 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
 
     # process the barcodes csv
     five_p_bcs, three_p_bcs, linked_bcds, min_score_5_p, sample_names = process_bcs(
-        barcodes_csv, mismatch_5p
+        barcodes_csv, mismatch_5p, args.three_prime_only
     )
-
-    check_N_position(
-        five_p_bcs, "5"
-    )  # check 3' later so that different 5' barcodes can have different types of 3' bcd
 
     # remove files from previous runs
     clean_files(output_directory, save_name)
 
-    # /# Make a queue to which workers that need work will add
-    # /# a signal
+    # Switch things up if 3 prime only
+    if args.three_prime_only:
+        assert args.input_2 is not False, 'In --three_prime_only mode you must have paired end sequencing!'
+        assert len(three_p_bcs) == 0, 'You appear to have given both 3 and 5 prime barcodes but are using --three_prime_only mode...?'
+
+        # Pretend that read1 is read2 and vice versa. This enables read2 to be passed to the 5' demultiplexing
+        file_name = args.input_2
+        i2 = args.inputfastq
+
+        # Also need to reverse complement the barcodes that are given. This is because the 3' barcodes are given
+        # as they are in read1. However, demultiplexing will use read2, which means it will be the reverse
+        # complement
+        five_p_bcs = [careful_rev_c(a) for a in five_p_bcs]
+
+        # Also need to switch the adapters
+        adapter2 = args.adapter
+        adapter = args.adapter2
+
+    # Note that if --three_prime_only then they will have been reverse complemented by the code above, and should
+    # now be consistent using the 5' barcode criteria
+    check_N_position(
+        five_p_bcs, "5"
+    )  # check 3' later so that different 5' barcodes can have different types of 3' bcd
+
+    # Make a queue to which workers that need work will add
+    # a signal
     need_work_queue = Queue()
     total_demultiplexed = Queue()
     total_reads_assigned = Queue()
@@ -1848,7 +1948,7 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
     total_reads_5p_no_3p_pass_length_filter = Queue()
     read_number = Queue()
 
-    # /# make a bunch of workers
+    # make a bunch of workers
     workers, all_conn_r, all_conn_w = start_workers(
         n_workers=threads,
         input_file=file_name,
@@ -1879,6 +1979,9 @@ def main(buffer_size=int(4 * 1024**2)):  # 4 MB
         final_min_length=final_min_length,
         dont_build_reference=dont_build_reference,
         keep_barcode=keep_barcode,
+        three_prime_only=args.three_prime_only,
+        TSO_umi_pos=TSO_umi_pos,
+        TSO_end=TSO_end
     )
 
     print("Demultiplexing...")
