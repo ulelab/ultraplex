@@ -30,7 +30,7 @@ if USE_CYTHON:
 # This call to setup() does all the work
 setup(
     name="ultraplex",
-    use_scm_version=True,
+    use_scm_version={'write_to': 'ultraplex/_version.py'},
     setup_requires=["setuptools_scm"],
     python_requires=">=3.7",
     description="fastq demultiplexer",
