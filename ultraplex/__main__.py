@@ -1019,6 +1019,7 @@ def write_tmp_files(
     write_this = True  # assume true
     if "no_match" in demulti_type and ignore_no_match:
         write_this = False
+        return 0  # no reads written
 
     if ultra_mode and write_this:
         # /# work out this filename
