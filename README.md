@@ -183,3 +183,7 @@ This is when you only have 3' barcodes. In this case, write each barcode on a ne
 ### TSO seq (--tso_seq)
 
 This is used solely in conjunction with the option --three_prime_barcode. It is solely for TSOs that have a p5 sequence (i.e. give rise to the read 1). Give a sequence of Ns followed by Is. Ns are moved to the UMI. Is are trimmed from the read but not moved to the UMI. For example, if using a TSO of sequence (p5)NNNNNrGrGrG, you would specify --tso_seq NNNNNIII. This would move the five random bases to the UMI, but the three non-random bases from the rGs would be trimmed and ignored.
+
+# Toubleshooting
+
+Ultraplex was primarily designed for small barcodes. To improve speed during demultiplexing, it builds a 'reference' dictionary of sequence-to-barcode matches prior to demultiplexing. For long barcodes, this can result in a lengthy wait before demultiplexing and extremely high RAM usage. It is therefore recommended to using the --dont_build_reference command when using barcodes longer than 8 nt. 
