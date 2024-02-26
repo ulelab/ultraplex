@@ -360,10 +360,7 @@ def three_p_demultiplex(
         to_remove = ""
 
     if add_umi:
-        if "rbc:" in read.name:
-            read.name = read.name + umi
-        else:
-            read.name = read.name + "rbc:" + umi
+        read.name = add_umi_correctly(read.name, umi)
 
     if reverse_complement:
         # spin back round
@@ -375,6 +372,23 @@ def three_p_demultiplex(
 
     return read, assigned, umi, to_remove
 
+
+def add_umi_correctly(read_name, umi):
+    """
+    This function takes the read name and the umi to be added and adds it to the read name segment BEFORE the space
+    """
+
+    # Check if 'rbc:' is already in the read header
+    if 'rbc:' in read_name:
+        split_read_name = read_name.split(' ')
+        split_read_name[0] += umi
+
+    else:  # rbc: isn't yet in read name
+        split_read_name = read_name.split(' ')
+        split_read_name[0] += 'rbc:'
+        split_read_name[0] += umi
+
+    return ' '.join(split_read_name)
 
 # TODO link three_p_mismatches to input
 def make_dict_of_3p_bc_dicts(linked_bcds, three_p_mismatches, dont_build_reference):
@@ -581,9 +595,6 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                     )
 
                     # /# demultiplex at the 5' end ###
-                    read.name = (
-                        read.name.replace(" ", "_").replace("/", "").replace("\\", "")
-                    )  # remove bad characters
 
                     read, five_p_bc, umi, to_remove = five_p_demulti(
                         read,
@@ -775,10 +786,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                     # add the 5' umi to each
                     for read in [read1, read2]:
-                        if not "rbc:" in read.name:
-                            read.name = read.name + "rbc:" + umi
-                        else:  # if rbc is already there
-                            read.name = read.name + umi
+                        read.name = add_umi_correctly(read.name, umi)
 
                     # demultiplex at the 3' end
                     # First, check if this 5' barcode has any 3' barcodes
@@ -802,10 +810,8 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
                             read2 = read2[self._TSO_end:]
 
                             for read in [read1, read2]:
-                                if not "rbc:" in read.name:
-                                    read.name = read.name + "rbc:" + TSO_umi
-                                else:  # if rbc is already there
-                                    read.name = read.name + TSO_umi
+                                read.name = add_umi_correctly(read.name, TSO_umi)
+
                         else:
                             comb_bc = "_5bc_" + five_p_bc
 
@@ -851,10 +857,7 @@ class WorkerProcess(Process):  # /# have to have "Process" here to enable worker
 
                         # add the second umi
                         for read in [read1, read2]:
-                            if not "rbc:" in read.name:
-                                read.name = read.name + "rbc:" + umi_3
-                            else:  # if rbc is already there
-                                read.name = read.name + umi_3
+                            read.name = add_umi_correctly(read.name, umi_3)
 
                         # remove the 5' bcded adapter from the reverse read
                         read2 = remove_mate_adapter(
@@ -1046,9 +1049,9 @@ def write_tmp_files(
                 assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
                 total_reads += 1
                 if counter == 0:
-                    umi_l = len(read.name.split("rbc:")[1])
+                    umi_l = len(read.name.split(' ')[0].split("rbc:")[1])
                 assert (
-                    len(read.name.split("rbc:")[1]) == umi_l
+                    len(read.name.split(' ')[0].split("rbc:")[1]) == umi_l
                 ), "UMIs are different lengths"
                 ## combine into a single list
                 this_out.append("@" + read.name)
@@ -1086,9 +1089,9 @@ def write_tmp_files(
                 assert len(read.name.split("rbc:")) <= 2, "Multiple UMIs in header!"
                 total_reads += 1
                 if counter == 0:
-                    umi_l = len(read.name.split("rbc:")[1])
+                    umi_l = len(read.name.split(' ')[0].split("rbc:")[1])
                 assert (
-                    len(read.name.split("rbc:")[1]) == umi_l
+                    len(read.name.split(' ')[0].split("rbc:")[1]) == umi_l
                 ), "UMIs are different lengths"
                 ## combine into a single list
                 this_out.append("@" + read.name)
@@ -1117,12 +1120,6 @@ def five_p_demulti(
     """
     sequence_length = len(read.sequence)
     this_five_p_umi = ""
-
-    # check if "rbc:" already in header
-    if "rbc:" in read.name:
-        to_add = ""
-    else:  # if not
-        to_add = "rbc:"
 
     if sequence_length > max(five_p_bc_pos):
         # find best barcode match
@@ -1155,13 +1152,13 @@ def five_p_demulti(
 
             if add_umi:
                 # to read header add umi and 5' barcode info
-                read.name = read.name.replace(" ", "_") + to_add + this_five_p_umi
+                read.name = add_umi_correctly(read.name, this_five_p_umi)
         else:  # if no match
-            read.name = read.name + to_add
+            read.name = add_umi_correctly(read.name, "")
 
     else:  # if read was too short to assign
         winner = "no_match"
-        read.name = read.name + to_add
+        read.name = add_umi_correctly(read.name, "")
         to_remove = ""
 
     return read, winner, this_five_p_umi, to_remove
