@@ -139,10 +139,10 @@ This option allows the user to specify how many mismatches are permitted when de
 This option allows the user to specify how many mismatches are permitted when detecting which 3’ barcode a read contains. If set to zero, then the 3’ barcode must match the expected barcode perfectly. By default, this value is set to zero mismatches.
 
 ### Adapter sequence (-a, --adapter):
-The 3’ adapter sequence to be removed. By default this is the Illumina universal sequencing adapter "AGATCGGAAGAGCGGTTCAG". For paired-end demultiplexing, this adapter only applies to the forward read (i.e. input 1, option -i)
+The 3’ adapter sequence to be removed. By default this is the Illumina universal sequencing adapter "AGATCGGAAGAGCACACGTCTGAA". For paired-end demultiplexing, this adapter only applies to the forward read (i.e. input 1, option -i)
 
 ### Adapter sequence 2 (-a2, --adapter2):
-The 3’ adapter to be removed for the reverse read (option -i2) for paired-end demultiplexing. By default this is “AGATCGGAAGAGCGTCGTG”.
+The 3’ adapter to be removed for the reverse read (option -i2) for paired-end demultiplexing. By default this is “AGATCGGAAGAGCACACGTCTGAA”.
 
 ### Minimum quality score (-q, --phredquality):
 The minimum quality score for 3’ end trimming (this uses the Cutadapt functionality). By default this is set to 30 (0.1% error rate). However, in some circumstances (especially when 3’ adaptors are used) it may be desirable to reduce the stringency of this.
